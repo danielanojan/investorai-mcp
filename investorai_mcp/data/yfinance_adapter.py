@@ -140,14 +140,30 @@ class YFinanceAdapter(DataProviderAdapter):
         records = []
         for item in raw[:limit]:
             try:
-                published_at = datetime.fromtimestamp(
-                    item.get("providerPublishTime", 0)
-                )
+                # yfinance >= 0.2.x nests article data under a "content" key.
+                # Fall back to the item itself for older response shapes.
+                content = item.get("content") or item
+
+                headline = content.get("title", "")
+
+                provider = content.get("provider", {})
+                source = provider.get("displayName", "") if isinstance(provider, dict) else item.get("publisher", "")
+
+                canonical = content.get("canonicalUrl") or {}
+                clickthrough = content.get("clickThroughUrl") or {}
+                url = canonical.get("url") or clickthrough.get("url") or item.get("link", "")
+
+                pub_date = content.get("pubDate", "")
+                if pub_date:
+                    published_at = datetime.fromisoformat(pub_date.replace("Z", "+00:00"))
+                else:
+                    published_at = datetime.fromtimestamp(item.get("providerPublishTime", 0))
+
                 records.append(NewsRecord(
                     symbol=symbol,
-                    headline = item.get("title", ""),
-                    source=item.get("publisher", ""),
-                    url=item.get("link", ""),
+                    headline=headline,
+                    source=source,
+                    url=url,
                     published_at=published_at,
                 ))
             except Exception:

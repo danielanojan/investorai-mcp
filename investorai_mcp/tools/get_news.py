@@ -16,27 +16,36 @@ _adapter = YFinanceAdapter()
 
 async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     """Fetch news from yfinance and write to DB. Returns stored news"""
-    from investorai_mcp.data.base import NewsRecord
-    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-    
+    from sqlalchemy import delete
+
     records = await _adapter.fetch_news(symbol, limit=50)
     if not records:
         return []
-    
-    for record in records:
-        stmt = sqlite_insert(NewsArticle).values(
+
+    valid_records = [
+        r for r in records
+        if r.headline.strip() and r.source.strip() and r.url.strip()
+    ]
+    if not valid_records:
+        return []
+
+    # Replace all existing news for this symbol so stale/blank rows don't linger.
+    await session.execute(delete(NewsArticle).where(NewsArticle.symbol == symbol))
+
+    now = datetime.now(timezone.utc)
+    for record in valid_records:
+        session.add(NewsArticle(
             symbol=symbol,
             headline=record.headline,
             source=record.source,
             url=record.url,
             published_at=record.published_at,
-            fetched_at=datetime.now(timezone.utc),
-        ).on_conflict_do_nothing()
-        await session.execute(stmt)
-        
+            fetched_at=now,
+        ))
+
     await session.commit()
-    
-    #Return freshly stored news. 
+
+    #Return freshly stored news.
     stmt = (
         select(NewsArticle)
         .where(NewsArticle.symbol == symbol)
@@ -86,6 +95,9 @@ async def get_news(
         }
         
     async with AsyncSessionLocal() as session:
+        manager = CacheManager(session, _adapter)
+        await manager.ensure_ticker_exists(symbol)
+
         #check if we have cached news and whether its fresh. 
         meta_stmt = select(CacheMetadata).where(
             CacheMetadata.symbol == symbol, 
@@ -106,7 +118,6 @@ async def get_news(
             rows = await _fetch_and_store_news(symbol, session)
             
             #update cache metadata
-            manager = CacheManager(session, _adapter)
             cache_meta = await manager._get_or_create_meta(symbol, "news")
             await manager._update_meta_success(cache_meta, provider="yfinance")
         else:

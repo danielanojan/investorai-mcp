@@ -37,9 +37,8 @@ def mock_manager():
         make_row(date(2026, 3, 28), price=170.0, volume=55_000_000),
     ]
     m = MagicMock()
-    m.ensure_ticket_exists = AsyncMock(return_value=MagicMock())
-    m.ensure_fresh = AsyncMock(return_value=None)
-    m.get_summary = AsyncMock(return_value=make_result(rows))
+    m.ensure_ticker_exists = AsyncMock(return_value=MagicMock())
+    m.get_prices = AsyncMock(return_value=make_result(rows))
     return m, rows
 
 #patch manager only creates an AsyncMock objest. It never calls them. 
@@ -125,7 +124,7 @@ async def test_empty_data_returns_error(mock_manager):
     from investorai_mcp.tools.get_daily_summary import get_daily_summary
     
     manager, _ = mock_manager
-    manager.get_summary = AsyncMock(return_value=make_result([]))
+    manager.get_prices = AsyncMock(return_value=make_result([]))
     
     p1, p2 = patch_manager(manager)
     with p1, p2:
@@ -138,7 +137,7 @@ async def test_stale_data_flag_propogated(mock_manager):
     from investorai_mcp.tools.get_daily_summary import get_daily_summary
     
     manager, rows = mock_manager
-    manager.get_summary = AsyncMock(return_value=make_result(rows, is_stale=True))
+    manager.get_prices = AsyncMock(return_value=make_result(rows, is_stale=True))
     
     p1, p2 = patch_manager(manager)
     with p1, p2:

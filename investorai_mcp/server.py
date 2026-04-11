@@ -66,6 +66,7 @@ def _register_tools():
     from investorai_mcp.tools import get_daily_summary # noqa: F401
     from investorai_mcp.tools import get_cache_status  # noqa: F401
     from investorai_mcp.tools import refresh_ticker     # noqa: F401
+    from investorai_mcp.tools import get_news
     
 async def _start_mcp_stdio() -> None:
     logger.info("Starting MCP server", transport="stdio")
@@ -92,7 +93,8 @@ async def _main() -> None:
     logger.info("Database ready")
     
     _register_tools()
-    logger.info("Tools registered", count=len(mcp.tool_manager.list_tools()))
+    tools = await mcp.list_tools()
+    logger.info("Tools registered", count=len(tools))
     
     if settings.mcp_transport == "stdio":
         await _start_mcp_stdio()

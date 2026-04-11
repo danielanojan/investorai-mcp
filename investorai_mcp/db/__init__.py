@@ -62,6 +62,7 @@ def _run_alembic_upgrade() -> None:
     """Run alembic migrations syncronously (called from async context via executor)"""
     import os
     from pathlib import Path
+    from sqlalchemy.exc import OperationalError
     
     # Get the project root (two levels up from this file)
     project_root = Path(__file__).parent.parent.parent #go to where alembic.ini lives
@@ -69,7 +70,14 @@ def _run_alembic_upgrade() -> None:
     
     alembic_cfg = Config(str(alembic_ini_path))
     alembic_cfg.set_main_option("sqlalchemy.url", os.environ.get("DATABASE_URL", settings.database_url))
-    command.upgrade(alembic_cfg, "head")      #run all migrations upto the latest one
+    try:
+        command.upgrade(alembic_cfg, "head")      #run all migrations up to the latest one
+    except OperationalError as exc:
+        # If tables already exist but alembic_version is missing, align migration state.
+        if "already exists" in str(exc).lower():
+            command.stamp(alembic_cfg, "head")
+            return
+        raise
     
 
 # async wrapper around run_alembic operator. It runs blocking Alembic command in a thread pool - do it does not freeze the async event loop. 

@@ -53,8 +53,8 @@ async def get_daily_summary(
         
     async with AsyncSessionLocal() as session:
         manager = CacheManager(session, _adapter)
-        await manager.ensure_fresh(symbol)  # trigger background refresh if data is stale
-        result = await manager.get_summary(symbol, range)
+        await manager.ensure_ticker_exists(symbol)
+        result = await manager.get_prices(symbol, range)
     
     if not result.data:
         return {
