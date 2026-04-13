@@ -20,6 +20,7 @@ dependencies = [
     "pydantic-settings>=2.2",
     "structlog>=24.1",
     "pandas>=2.2",
+    "langfuse>=4.2.0",
 ]
 
 [project.scripts]

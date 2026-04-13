@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     alpha_vantage_key : str | None = None
     polygon_key : str | None = None
     
+    
+    ############## LLM (BYOK) 
+    llm_api_key : str | None = None
+    llm_model : str = "claude-sonnet-4-20250514"
+    llm_provider : str = "anthropic"    #anthrophic | openai | grok
+    
+    
+    ############## Langfuse monitoring
+    langfuse_host : str = "https://cloud.langfuse.com"
+    langfuse_public_key : str | None = None
+    langfuse_private_key : str | None = None 
+    
+    
     ############# MCP Transport
     mcp_transport: Literal["stdio", "http"] = "stdio"
     mcp_http_port : int = 8000

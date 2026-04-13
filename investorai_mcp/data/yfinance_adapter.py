@@ -147,7 +147,10 @@ class YFinanceAdapter(DataProviderAdapter):
                 headline = content.get("title", "")
 
                 provider = content.get("provider", {})
-                source = provider.get("displayName", "") if isinstance(provider, dict) else item.get("publisher", "")
+                source = ""
+                if isinstance(provider, dict):
+                    source = provider.get("displayName", "") or ""
+                source = source or content.get("publisher", "") or item.get("publisher", "")
 
                 canonical = content.get("canonicalUrl") or {}
                 clickthrough = content.get("clickThroughUrl") or {}

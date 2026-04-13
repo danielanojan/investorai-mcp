@@ -1,0 +1,1227 @@
+[
+  {
+    "category": "price_fact",
+    "question": "What was Thermo Fisher Scientific (TMO) adjusted close price on 2022-11-16?",
+    "expected": "530.45",
+    "symbol": "TMO",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in BlackRock Inc. (BLK) over the past year?",
+    "expected": "14.6%",
+    "symbol": "BLK",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Get price history for brk-b",
+    "expected": "supported",
+    "symbol": "BRK-B",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Advanced Micro Devices (AMD) performed over the last 1Y?",
+    "expected": "AMD gained 159.3% over 1Y, from $94.5 to $245.04.",
+    "symbol": "AMD",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Exxon Mobil Corporation (XOM) performed over the last 3M?",
+    "expected": "XOM gained 21.33% over 3M, from $125.7 to $152.51.",
+    "symbol": "XOM",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Visa Inc. (V) adjusted close price on 2026-04-10?",
+    "expected": "304.36",
+    "symbol": "V",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in JPMorgan Chase & Co. (JPM) over the past year?",
+    "expected": "34.59%",
+    "symbol": "JPM",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was McDonald's Corporation (MCD) adjusted close price on 2023-06-20?",
+    "expected": "274.9",
+    "symbol": "MCD",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me TSLA data for 10 years",
+    "expected": "supported",
+    "symbol": "TSLA",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Is AAPL a good investment?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Walt Disney Co. (DIS) performed over the last 3M?",
+    "expected": "DIS lost 12.22% over 3M, from $112.98 to $99.17.",
+    "symbol": "DIS",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me prices for FAKE_TICKER",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Qualcomm Inc. (QCOM)'s 52-week high and low?",
+    "expected": "52-week high: $185.53, 52-week low: $124.07",
+    "symbol": "QCOM",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Home Depot Inc. (HD)'s 52-week high and low?",
+    "expected": "52-week high: $417.91, 52-week low: $318.77",
+    "symbol": "HD",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Starbucks Corporation (SBUX)'s 52-week high and low?",
+    "expected": "52-week high: $101.44, 52-week low: $77.4",
+    "symbol": "SBUX",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is the S&P 500 index value?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Adobe Inc. (ADBE) adjusted close price on 2025-01-29?",
+    "expected": "441.68",
+    "symbol": "ADBE",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Intel Corporation (INTC) adjusted close price on 2022-07-29?",
+    "expected": "34.2",
+    "symbol": "INTC",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me prices for aapl",
+    "expected": "supported",
+    "symbol": "AAPL",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Bank of America Corp. (BAC) over the past year?",
+    "expected": "46.51%",
+    "symbol": "BAC",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Goldman Sachs Group Inc. (GS) adjusted close price on 2023-12-13?",
+    "expected": "345.25",
+    "symbol": "GS",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "What is the price of XYZ123?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Oracle Corporation (ORCL) adjusted close price on 2022-07-07?",
+    "expected": "68.13",
+    "symbol": "ORCL",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Home Depot Inc. (HD) over the past year?",
+    "expected": "-3.17%",
+    "symbol": "HD",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Alphabet Inc. (GOOGL) over the past year?",
+    "expected": "100.13%",
+    "symbol": "GOOGL",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Tesla Inc. (TSLA) adjusted close price on 2023-10-12?",
+    "expected": "258.87",
+    "symbol": "TSLA",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Shopify Inc. (SHOP) adjusted close price on 2022-12-09?",
+    "expected": "38.38",
+    "symbol": "SHOP",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Enphase Energy Inc. (ENPH) over the past year?",
+    "expected": "-42.82%",
+    "symbol": "ENPH",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Microsoft Corporation (MSFT) performed over the last 3M?",
+    "expected": "MSFT lost 21.02% over 3M, from $469.6 to $370.87.",
+    "symbol": "MSFT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Goldman Sachs Group Inc. (GS) adjusted close price on 2023-10-20?",
+    "expected": "283.27",
+    "symbol": "GS",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "What was AAPL price on a Saturday?",
+    "expected": "no_trading_on_weekends",
+    "symbol": "AAPL",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was JPMorgan Chase & Co. (JPM) adjusted close price on 2021-09-07?",
+    "expected": "141.12",
+    "symbol": "JPM",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What stocks should I buy for retirement?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was UnitedHealth Group Inc. (UNH)'s 52-week high and low?",
+    "expected": "52-week high: $570.96, 52-week low: $232.89",
+    "symbol": "UNH",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was American Express Co. (AXP)'s 52-week high and low?",
+    "expected": "52-week high: $382.83, 52-week low: $239.99",
+    "symbol": "AXP",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: NFLX or DIS?",
+    "expected": "DIS",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Starbucks Corporation (SBUX) adjusted close price on 2022-08-26?",
+    "expected": "77.22",
+    "symbol": "SBUX",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Adobe Inc. (ADBE) adjusted close price on 2022-11-30?",
+    "expected": "344.93",
+    "symbol": "ADBE",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Mastercard Inc. (MA) adjusted close price on 2023-02-24?",
+    "expected": "346.41",
+    "symbol": "MA",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is DOGECOIN trading at?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Meta Platforms Inc. (META) adjusted close price on 2023-07-24?",
+    "expected": "289.34",
+    "symbol": "META",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Should I invest in index funds or individual stocks?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Mastercard Inc. (MA) over the past year?",
+    "expected": "-2.12%",
+    "symbol": "MA",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Salesforce Inc. (CRM) over the past year?",
+    "expected": "-34.71%",
+    "symbol": "CRM",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: WMT or COST?",
+    "expected": "WMT",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Meta Platforms Inc. (META) adjusted close price on 2026-02-25?",
+    "expected": "653.13",
+    "symbol": "META",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Qualcomm Inc. (QCOM) adjusted close price on 2024-01-09?",
+    "expected": "133.33",
+    "symbol": "QCOM",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Intel Corporation (INTC) adjusted close price on 2022-12-08?",
+    "expected": "27.42",
+    "symbol": "INTC",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is the best stock to buy right now?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Home Depot Inc. (HD) performed over the last 6M?",
+    "expected": "HD lost 11.98% over 6M, from $383.24 to $337.34.",
+    "symbol": "HD",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Should I put money in AAPL or a savings account?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Home Depot Inc. (HD) adjusted close price on 2023-09-11?",
+    "expected": "308.57",
+    "symbol": "HD",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has McDonald's Corporation (MCD) performed over the last 1Y?",
+    "expected": "MCD lost 1.05% over 1Y, from $308.92 to $305.68.",
+    "symbol": "MCD",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Exxon Mobil Corporation (XOM) adjusted close price on 2022-06-02?",
+    "expected": "85.98",
+    "symbol": "XOM",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Caterpillar Inc. (CAT) performed over the last 3M?",
+    "expected": "CAT gained 24.51% over 3M, from $635.04 to $790.66.",
+    "symbol": "CAT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Mastercard Inc. (MA) adjusted close price on 2021-04-21?",
+    "expected": "372.12",
+    "symbol": "MA",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Chevron Corporation (CVX) performed over the last 3M?",
+    "expected": "CVX gained 16.19% over 3M, from $162.28 to $188.55.",
+    "symbol": "CVX",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Get NVDA data for 1 week",
+    "expected": "supported",
+    "symbol": "NVDA",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Exxon Mobil Corporation (XOM)'s 52-week high and low?",
+    "expected": "52-week high: $171.47, 52-week low: $99.35",
+    "symbol": "XOM",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Costco Wholesale Corp. (COST) adjusted close price on 2025-04-29?",
+    "expected": "986.29",
+    "symbol": "COST",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is the VIX index today?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Bank of America Corp. (BAC)'s 52-week high and low?",
+    "expected": "52-week high: $56.93, 52-week low: $35.86",
+    "symbol": "BAC",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Berkshire Hathaway B (BRK-B) adjusted close price on 2024-04-22?",
+    "expected": "408.78",
+    "symbol": "BRK-B",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: AAPL or MSFT?",
+    "expected": "AAPL",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Target Corporation (TGT) performed over the last 6M?",
+    "expected": "TGT gained 37.16% over 6M, from $88.87 to $121.89.",
+    "symbol": "TGT",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Get JPM data for 5 years",
+    "expected": "supported",
+    "symbol": "JPM",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: TSLA or AMZN?",
+    "expected": "TSLA",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me WMT prices",
+    "expected": "supported",
+    "symbol": "WMT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was BlackRock Inc. (BLK) adjusted close price on 2025-12-26?",
+    "expected": "1082.09",
+    "symbol": "BLK",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is Bitcoin's current price?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: JPM or BAC?",
+    "expected": "BAC",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Salesforce Inc. (CRM) performed over the last 3M?",
+    "expected": "CRM lost 31.4% over 3M, from $240.46 to $164.96.",
+    "symbol": "CRM",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Advanced Micro Devices (AMD) adjusted close price on 2022-10-25?",
+    "expected": "61.47",
+    "symbol": "AMD",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Chevron Corporation (CVX) over the past year?",
+    "expected": "45.61%",
+    "symbol": "CVX",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was NextEra Energy Inc. (NEE) adjusted close price on 2023-02-17?",
+    "expected": "69.24",
+    "symbol": "NEE",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Boeing Company (BA) performed over the last 6M?",
+    "expected": "BA gained 1.7% over 6M, from $214.0 to $217.63.",
+    "symbol": "BA",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Goldman Sachs Group Inc. (GS) performed over the last 1Y?",
+    "expected": "GS gained 83.86% over 1Y, from $493.75 to $907.8.",
+    "symbol": "GS",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is the Fed interest rate?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Eli Lilly and Co. (LLY) adjusted close price on 2022-05-25?",
+    "expected": "297.5",
+    "symbol": "LLY",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Netflix Inc. (NFLX) over the past year?",
+    "expected": "10.61%",
+    "symbol": "NFLX",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Merck & Co. Inc. (MRK) performed over the last 3M?",
+    "expected": "MRK gained 12.99% over 3M, from $107.46 to $121.42.",
+    "symbol": "MRK",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Apple Inc. (AAPL)'s 52-week high and low?",
+    "expected": "52-week high: $285.92, 52-week low: $192.32",
+    "symbol": "AAPL",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Qualcomm Inc. (QCOM) performed over the last 1Y?",
+    "expected": "QCOM lost 5.84% over 1Y, from $136.0 to $128.06.",
+    "symbol": "QCOM",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: META or GOOGL?",
+    "expected": "GOOGL",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is Apple's bond rating?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Salesforce Inc. (CRM) performed over the last 1Y?",
+    "expected": "CRM lost 34.71% over 1Y, from $252.66 to $164.96.",
+    "symbol": "CRM",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Goldman Sachs Group Inc. (GS) over the past year?",
+    "expected": "83.86%",
+    "symbol": "GS",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Berkshire Hathaway B (BRK-B) adjusted close price on 2021-06-29?",
+    "expected": "276.21",
+    "symbol": "BRK-B",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "What is the price of AMZN on New Year 2026?",
+    "expected": "no_trading_on_weekends",
+    "symbol": "AMZN",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Salesforce Inc. (CRM) adjusted close price on 2025-06-10?",
+    "expected": "266.23",
+    "symbol": "CRM",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Alphabet Inc. (GOOGL) performed over the last 6M?",
+    "expected": "GOOGL gained 26.55% over 6M, from $250.69 to $317.24.",
+    "symbol": "GOOGL",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has UnitedHealth Group Inc. (UNH) performed over the last 3M?",
+    "expected": "UNH lost 8.15% over 3M, from $331.35 to $304.33.",
+    "symbol": "UNH",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Give me a buy signal for MSFT",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was NextEra Energy Inc. (NEE) adjusted close price on 2023-08-28?",
+    "expected": "62.71",
+    "symbol": "NEE",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Berkshire Hathaway B (BRK-B)'s 52-week high and low?",
+    "expected": "52-week high: $539.8, 52-week low: $459.11",
+    "symbol": "BRK-B",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is the price of gold?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has PayPal Holdings Inc. (PYPL) performed over the last 6M?",
+    "expected": "PYPL lost 33.1% over 6M, from $67.62 to $45.24.",
+    "symbol": "PYPL",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has BlackRock Inc. (BLK) performed over the last 1Y?",
+    "expected": "BLK gained 14.6% over 1Y, from $871.98 to $999.31.",
+    "symbol": "BLK",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me GOOGL prices since IPO",
+    "expected": "supported",
+    "symbol": "GOOGL",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Qualcomm Inc. (QCOM) adjusted close price on 2022-06-10?",
+    "expected": "122.17",
+    "symbol": "QCOM",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Give me options trading strategies for AAPL",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was NVIDIA Corporation (NVDA) adjusted close price on 2021-10-26?",
+    "expected": "24.66",
+    "symbol": "NVDA",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is the price of crude oil?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Microsoft Corporation (MSFT) adjusted close price on 2022-02-14?",
+    "expected": "284.79",
+    "symbol": "MSFT",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: NVDA or AMD?",
+    "expected": "AMD",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Morgan Stanley (MS) over the past year?",
+    "expected": "67.17%",
+    "symbol": "MS",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Qualcomm Inc. (QCOM) over the past year?",
+    "expected": "-5.84%",
+    "symbol": "QCOM",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was GE Aerospace (GE) adjusted close price on 2026-03-09?",
+    "expected": "321.93",
+    "symbol": "GE",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was American Express Co. (AXP) adjusted close price on 2024-10-01?",
+    "expected": "263.62",
+    "symbol": "AXP",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Tesla Inc. (TSLA) performed over the last 1Y?",
+    "expected": "TSLA gained 38.28% over 1Y, from $252.35 to $348.95.",
+    "symbol": "TSLA",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has American Express Co. (AXP) performed over the last 1Y?",
+    "expected": "AXP gained 24.05% over 1Y, from $252.73 to $313.5.",
+    "symbol": "AXP",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Costco Wholesale Corp. (COST) adjusted close price on 2026-03-10?",
+    "expected": "997.36",
+    "symbol": "COST",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Tesla Inc. (TSLA) performed over the last 6M?",
+    "expected": "TSLA lost 19.81% over 6M, from $435.15 to $348.95.",
+    "symbol": "TSLA",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was NextEra Energy Inc. (NEE) adjusted close price on 2024-06-27?",
+    "expected": "70.08",
+    "symbol": "NEE",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Morgan Stanley (MS) adjusted close price on 2021-06-16?",
+    "expected": "77.97",
+    "symbol": "MS",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me BRK-B price history",
+    "expected": "supported",
+    "symbol": "BRK-B",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Chevron Corporation (CVX) adjusted close price on 2026-03-13?",
+    "expected": "196.82",
+    "symbol": "CVX",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in McDonald's Corporation (MCD) over the past year?",
+    "expected": "-1.05%",
+    "symbol": "MCD",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What will TSLA stock price be next year?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Boeing Company (BA) adjusted close price on 2023-06-02?",
+    "expected": "213.32",
+    "symbol": "BA",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Get prices for BTC-USD",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Caterpillar Inc. (CAT) adjusted close price on 2024-05-06?",
+    "expected": "333.66",
+    "symbol": "CAT",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Qualcomm Inc. (QCOM) performed over the last 6M?",
+    "expected": "QCOM lost 20.51% over 6M, from $161.11 to $128.06.",
+    "symbol": "QCOM",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: PFE or JNJ?",
+    "expected": "JNJ",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: XOM or CVX?",
+    "expected": "XOM",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Caterpillar Inc. (CAT) over the past year?",
+    "expected": "168.87%",
+    "symbol": "CAT",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Caterpillar Inc. (CAT) performed over the last 6M?",
+    "expected": "CAT gained 48.82% over 6M, from $531.28 to $790.66.",
+    "symbol": "CAT",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Walt Disney Co. (DIS) over the past year?",
+    "expected": "18.44%",
+    "symbol": "DIS",
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in AbbVie Inc. (ABBV) over the past year?",
+    "expected": "20.0%",
+    "symbol": "ABBV",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Enphase Energy Inc. (ENPH)'s 52-week high and low?",
+    "expected": "52-week high: $54.55, 52-week low: $26.12",
+    "symbol": "ENPH",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "What is Ethereum worth today?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Thermo Fisher Scientific (TMO) performed over the last 3M?",
+    "expected": "TMO lost 18.2% over 3M, from $606.48 to $496.11.",
+    "symbol": "TMO",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was JPMorgan Chase & Co. (JPM) adjusted close price on 2021-12-28?",
+    "expected": "141.46",
+    "symbol": "JPM",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Intel Corporation (INTC)'s 52-week high and low?",
+    "expected": "52-week high: $62.38, 52-week low: $18.84",
+    "symbol": "INTC",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Target Corporation (TGT) performed over the last 1Y?",
+    "expected": "TGT gained 34.69% over 1Y, from $90.5 to $121.89.",
+    "symbol": "TGT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Thermo Fisher Scientific (TMO) adjusted close price on 2021-05-28?",
+    "expected": "463.18",
+    "symbol": "TMO",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was JPMorgan Chase & Co. (JPM) adjusted close price on 2023-05-12?",
+    "expected": "125.24",
+    "symbol": "JPM",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Visa Inc. (V)'s 52-week high and low?",
+    "expected": "52-week high: $371.15, 52-week low: $295.52",
+    "symbol": "V",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Get prices for QQQ",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in Meta Platforms Inc. (META) over the past year?",
+    "expected": "18.88%",
+    "symbol": "META",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Pfizer Inc. (PFE) adjusted close price on 2022-12-07?",
+    "expected": "41.54",
+    "symbol": "PFE",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Amazon.com Inc. (AMZN) adjusted close price on 2024-06-18?",
+    "expected": "182.81",
+    "symbol": "AMZN",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "What was MSFT price on Christmas 2025?",
+    "expected": "no_trading_on_weekends",
+    "symbol": "MSFT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Intel Corporation (INTC) adjusted close price on 2023-07-24?",
+    "expected": "32.96",
+    "symbol": "INTC",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was NVIDIA Corporation (NVDA) adjusted close price on 2023-01-24?",
+    "expected": "19.24",
+    "symbol": "NVDA",
+    "verified": true
+  },
+  {
+    "category": "comparison",
+    "question": "Which performed better over the last year: V or MA?",
+    "expected": "MA",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Should I sell my NVDA shares?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Wells Fargo & Co. (WFC) adjusted close price on 2024-06-10?",
+    "expected": "55.67",
+    "symbol": "WFC",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Lockheed Martin Corp. (LMT)'s 52-week high and low?",
+    "expected": "52-week high: $676.7, 52-week low: $402.57",
+    "symbol": "LMT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Walmart Inc. (WMT) adjusted close price on 2024-11-12?",
+    "expected": "83.83",
+    "symbol": "WMT",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Walt Disney Co. (DIS) performed over the last 6M?",
+    "expected": "DIS lost 10.63% over 6M, from $110.96 to $99.17.",
+    "symbol": "DIS",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Caterpillar Inc. (CAT) adjusted close price on 2021-05-20?",
+    "expected": "215.28",
+    "symbol": "CAT",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Eli Lilly and Co. (LLY) adjusted close price on 2022-10-03?",
+    "expected": "312.61",
+    "symbol": "LLY",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Advanced Micro Devices (AMD) adjusted close price on 2021-07-06?",
+    "expected": "94.47",
+    "symbol": "AMD",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was McDonald's Corporation (MCD) adjusted close price on 2022-07-08?",
+    "expected": "232.36",
+    "symbol": "MCD",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me AAPL data for the next year",
+    "expected": "supported",
+    "symbol": "AAPL",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Johnson & Johnson (JNJ) performed over the last 3M?",
+    "expected": "JNJ gained 12.21% over 3M, from $212.52 to $238.46.",
+    "symbol": "JNJ",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Should I buy Tesla stock right now?",
+    "expected": "no_financial_advice",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Merck & Co. Inc. (MRK) adjusted close price on 2022-11-25?",
+    "expected": "96.74",
+    "symbol": "MRK",
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Microsoft Corporation (MSFT) performed over the last 1Y?",
+    "expected": "MSFT lost 3.64% over 1Y, from $384.86 to $370.87.",
+    "symbol": "MSFT",
+    "verified": true
+  },
+  {
+    "category": "out_of_scope",
+    "question": "Tell me AAPL options chain",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in NextEra Energy Inc. (NEE) over the past year?",
+    "expected": "43.11%",
+    "symbol": "NEE",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Get prices for META on a Sunday",
+    "expected": "no_trading_on_weekends",
+    "symbol": "META",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was American Express Co. (AXP) adjusted close price on 2023-11-03?",
+    "expected": "148.54",
+    "symbol": "AXP",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Boeing Company (BA) adjusted close price on 2026-03-17?",
+    "expected": "210.82",
+    "symbol": "BA",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Target Corporation (TGT) adjusted close price on 2023-12-19?",
+    "expected": "128.52",
+    "symbol": "TGT",
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was AbbVie Inc. (ABBV)'s 52-week high and low?",
+    "expected": "52-week high: $240.69, 52-week low: $166.16",
+    "symbol": "ABBV",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "What is the price of VOO ETF?",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "trend",
+    "question": "How has Amazon.com Inc. (AMZN) performed over the last 6M?",
+    "expected": "AMZN gained 10.58% over 6M, from $215.57 to $238.38.",
+    "symbol": "AMZN",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me DOGECOIN prices",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "high_low",
+    "question": "What was Advanced Micro Devices (AMD)'s 52-week high and low?",
+    "expected": "52-week high: $264.33, 52-week low: $85.56",
+    "symbol": "AMD",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Netflix Inc. (NFLX) adjusted close price on 2022-07-13?",
+    "expected": "17.66",
+    "symbol": "NFLX",
+    "verified": true
+  },
+  {
+    "category": "price_fact",
+    "question": "What was Boeing Company (BA) adjusted close price on 2023-05-12?",
+    "expected": "200.7",
+    "symbol": "BA",
+    "verified": true
+  },
+  {
+    "category": "edge_case",
+    "question": "Show me SPY ETF prices",
+    "expected": "not_supported",
+    "symbol": null,
+    "verified": true
+  },
+  {
+    "category": "pct_change",
+    "question": "What is the percentage change in PayPal Holdings Inc. (PYPL) over the past year?",
+    "expected": "-26.96%",
+    "symbol": "PYPL",
+    "verified": true
+  }
+]
