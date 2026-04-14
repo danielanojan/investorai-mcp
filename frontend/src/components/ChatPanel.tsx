@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Trash2, Bot, User } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { useChat, type ChatMessage } from '../hooks/useChat'
 import type { TimeRange } from '../types'
 
@@ -55,13 +56,17 @@ function Message({ message }: { message: ChatMessage }) {
             ? 'bg-red-50 text-red-700 border border-red-200 rounded-tl-sm'
             : 'bg-white text-gray-800 border border-gray-200 rounded-tl-sm shadow-sm'
         }`}>
-          {message.content || (message.streaming && (
-            <span className="flex gap-1 items-center py-0.5">
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </span>
-          ))}
+          {message.content
+            ? isUser
+              ? message.content
+              : <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1"><ReactMarkdown>{message.content}</ReactMarkdown></div>
+            : message.streaming && (
+              <span className="flex gap-1 items-center py-0.5">
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </span>
+            )}
         </div>
 
         {/* Citations */}
@@ -78,6 +83,10 @@ function Message({ message }: { message: ChatMessage }) {
 }
 
 const SUGGESTIONS = [
+  "What day is today?",
+  "What sectors and tickers do you support?",
+  "Compare the stocks in the technology sector in the last 3 months",
+  "Get recent news on Tesla and Microsoft",
   "How has this stock performed this year?",
   "What is the 52-week high and low?",
   "How volatile is this stock?",

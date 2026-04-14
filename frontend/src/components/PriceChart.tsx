@@ -3,7 +3,7 @@ import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
-import type { PriceHistory } from '../types'
+import type { PriceHistory, PricePoint } from '../types'
 
 interface Props {
   data: PriceHistory
@@ -38,11 +38,11 @@ export default function PriceChart({ data }: Props) {
     const prices = data.prices
     if (prices.length <= 252) return prices
     const step = Math.ceil(prices.length / 252)
-    return prices.filter((_, i) => i % step === 0)
+    return prices.filter((_: PricePoint, i: number) => i % step === 0)
   }, [data.prices])
 
-  const minPrice = Math.min(...chartData.map(p => p.price)) * 0.98
-  const maxPrice = Math.max(...chartData.map(p => p.price)) * 1.02
+  const minPrice = Math.min(...chartData.map((p: PricePoint) => p.price)) * 0.98
+  const maxPrice = Math.max(...chartData.map((p: PricePoint) => p.price)) * 1.02
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
@@ -51,7 +51,7 @@ export default function PriceChart({ data }: Props) {
         <div>
           <p className="text-sm text-gray-500">Price history</p>
           <p className="text-xs text-gray-400 mt-0.5">
-            {data.start_date} → {data.end_date}
+            {data.prices[0]?.date} → {data.prices[data.prices.length - 1]?.date}
           </p>
         </div>
         <div className="text-right">
@@ -114,7 +114,7 @@ export default function PriceChart({ data }: Props) {
       {/* Footer */}
       {data.is_stale && (
         <p className="text-xs text-amber-500 mt-2">
-          ⚠ Data may be outdated ({data.data_age_hours?.toFixed(1)}h old)
+          ⚠ Data may be outdated{data.data_age_hours != null ? ` (${data.data_age_hours.toFixed(1)}h old)` : ''}
         </p>
       )}
     </div>

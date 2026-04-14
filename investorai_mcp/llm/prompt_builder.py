@@ -14,21 +14,45 @@ from typing import Optional
 from investorai_mcp.db.models import NewsArticle, PriceHistory
 
 ### ---- Closed-context system prompt -----------------------
-#DO NOT CHANGE without re-running the full eval suite at 98% pass rate. 
+#DO NOT CHANGE without re-running the full eval suite at 98% pass rate.
 
-SYSTEM_PROMPT = """ You are a stock research assistant for casual retail investors. 
+SYSTEM_PROMPT = """ You are a stock research assistant for casual retail investors.
 
 RULES (follow strictly):
-1. Only state financial figures that appear verbatim in the DATA PROVIDED below. 
-    Never use your training knowledge for any specific price, percentage, date, 
-    or finance metric. If a figure is not data provided, do not state it. 
+1. Only state financial figures that appear verbatim in the DATA PROVIDED below.
+    Never use your training knowledge for any specific price, percentage, date,
+    or finance metric. If a figure is not data provided, do not state it.
 2. When you cite a number, append a citation rag: [source: DB • {date}]
 3. For news-based claimbs, cite: [source: Publisher • URL]
 4. If you cannot answer from the provided data, respond exactly:
     "I Don't have a reliable data to answer this"
-5. Never give financial advice. Never recommend buying or selling. 
-6. Write for a casual investor. Avoid jargon. Explain acronyms on first use. 
-7. Keep responses to 3-5 sentences for summaries, or answer the question directly. 
+5. Never give financial advice. Never recommend buying or selling.
+6. Write for a casual investor. Avoid jargon. Explain acronyms on first use.
+7. Keep responses to 3-5 sentences for summaries, or answer the question directly.
+"""
+
+# Chain-of-thought prompt for analytical questions over a specific date range.
+# Used when the user asks about movement between two explicit dates.
+COT_SYSTEM_PROMPT = """You are a stock research assistant for casual retail investors.
+
+STRICT RULES:
+1. Only cite financial figures that appear verbatim in DATA_PROVIDED.
+   Never use training knowledge for any price, percentage, date, or metric.
+2. Append [source: DB • YYYY-MM-DD] to every number you cite.
+3. For news-based claims, cite: [source: Publisher • URL]
+4. If you cannot answer from the provided data, say exactly:
+   "I don't have reliable data to answer this accurately."
+5. No financial advice. No buy/sell recommendations.
+6. Write plainly for a casual investor.
+
+REASONING STEPS (work through these before writing your final answer):
+  Step 1 — PERIOD:  Identify the exact start and end dates shown in the data.
+  Step 2 — PRICES:  Note the start price and end price for that window.
+  Step 3 — CHANGE:  Compute the % return (end - start) / start × 100.
+  Step 4 — CONTEXT: Note the period high, low, and any notable swings.
+  Step 5 — ANSWER:  Write 2-4 plain sentences with citations for every figure.
+
+Output ONLY Step 5. Do not show the intermediate steps.
 """
 
 
@@ -53,7 +77,7 @@ class PriceSummaryStats:
     low_date: str
     avg_price: float
     avg_daily_volume: float
-    volatality_pct: float
+    volatility_pct: float
     trading_days: int
     
     
@@ -73,7 +97,7 @@ class PriceSummaryStats:
             f"- 52-week low:  ${self.low_price:.2f} on {self.low_date}\n"
             f"- Average price: ${self.avg_price:.2f}\n"
             f"- Avg daily volume: {self.avg_daily_volume:,}\n"
-            f"- Annualised volatility: {self.volatality_pct:.1f}%\n"
+            f"- Annualised volatility: {self.volatility_pct:.1f}%\n"
             f"- Trading days in period: {self.trading_days}\n"
         )
 
@@ -111,14 +135,14 @@ def compute_stats(
     avg_volume = round(statistics.mean(volumes))
     
     #annualised volatality - std dev of daily returns × √252
-    volatality_pct = 0.0
+    volatility_pct = 0.0
     if len(adj_closes) >= 2:
         daily_returns = [
             (adj_closes[i] - adj_closes[i - 1]) / adj_closes[i - 1]
             for i in range(1, len(adj_closes))
         ]
         if len(daily_returns) >= 2:
-            volatality_pct = round(
+            volatility_pct = round(
                 statistics.stdev(daily_returns) * (252 ** 0.5) * 100, 2
             )
     
@@ -136,17 +160,19 @@ def compute_stats(
         low_date=str(low_date),
         avg_price=avg_price,
         avg_daily_volume=avg_volume,
-        volatality_pct=volatality_pct,
+        volatility_pct=volatility_pct,
         trading_days=len(rows),
     )
     
 ### ---- Prompt Builder ----------------------------------
 
 def build_prompt(
-    stats: PriceSummaryStats, 
-    question: str, 
+    stats: PriceSummaryStats,
+    question: str,
     news: list[NewsArticle] | None = None,
     history: list[str] | None = None,
+    use_cot: bool = False,
+    news_focus: bool = False,
 ) -> list[dict]:
     """
     Build the full message list for LLM call
@@ -167,7 +193,7 @@ def build_prompt(
     Returns: 
         List of message dicts ready for call_llm()
     """
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": COT_SYSTEM_PROMPT if use_cot else SYSTEM_PROMPT}]
     
     # add compressed history if provided. 
     # (history already compressed by ChatHistoryManager)
@@ -180,21 +206,28 @@ def build_prompt(
     # Add news headlines if provided (max 5 to keep tokens low)
     news_block = ""
     if news:
-        headlines = []
-        for article in news[:5]:
-            headlines.append(
-                f"- {article.headline} "
-                f"({article.source} • {article.url})"
-            )
+        headlines = [
+            f"- {article.headline} ({article.source} • {article.url})"
+            for article in news[:5]
+        ]
         if headlines:
-            news_block = "\nRECENT NEWS: \n" + "\n".join(headlines) + "\n"
-    
-    #combine data + news + question into user message. 
-    user_content = (
-        f"DATA_PROVIDED:\n{data_block}"
-        f"{news_block}"
-        f"\nUser question:\n{question}"
-    )
+            news_block = "RECENT NEWS:\n" + "\n".join(headlines) + "\n"
+
+    # News-focused questions: lead with news, append price data as context only
+    if news_focus and news_block:
+        user_content = (
+            f"{news_block}"
+            f"\nPRICE CONTEXT (for reference only):\n{data_block}"
+            f"\nUser question:\n{question}"
+            f"\nInstruction: Answer based on the news articles above. "
+            f"Only reference price data if directly relevant to the question."
+        )
+    else:
+        user_content = (
+            f"DATA_PROVIDED:\n{data_block}"
+            f"\n{news_block}"
+            f"\nUser question:\n{question}"
+        )
     
     messages.append({"role": "user", "content": user_content})
     return messages

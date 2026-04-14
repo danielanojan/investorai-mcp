@@ -60,13 +60,13 @@ def test_compute_stats_trading_days(sample_stats, sample_rows):
     assert sample_stats.trading_days == len(sample_rows)
     
 def test_compute_stats_volatality_non_negative(sample_stats):
-    assert sample_stats.volatality_pct >= 0
+    assert sample_stats.volatility_pct >= 0
     
 def test_compute_stats_single_row():
     rows = [make_row(date(2026, 3, 28), price=174.0)]
     stats = compute_stats("AAPL", "1D", rows)
     assert stats is not None
-    assert stats.volatality_pct == 0.0 # can't compute with 1 row
+    assert stats.volatility_pct == 0.0 # can't compute with 1 row
     
     
 #### --- PriceSummaryStats.to_text

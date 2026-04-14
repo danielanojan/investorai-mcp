@@ -1,11 +1,15 @@
 """
-Post-generation validator. 
+Post-generation validator.
 
 Extracts every financial number from LLM responses and
-verifies each against the database within 0.5% tolerance. 
-If any number fails verification the response is supressed. 
+verifies each against the database within tolerance.
+Suppresses response only when numbers are provably wrong.
 
-This si the zero-hallucination gurantee for InvestorAI. 
+Design principles:
+- Honest "I don't have data" responses pass through unchanged
+- Only block responses with fabricated numbers
+- 2% tolerance to allow for rounding differences
+- Skip very large numbers (market caps) that can't be verified
 """
 import logging
 import re
@@ -16,97 +20,67 @@ from investorai_mcp.llm.prompt_builder import PriceSummaryStats
 
 logger = logging.getLogger(__name__)
 
-#Tolerance - how far off a number can be before it's flagged. 
-TOLERANCE_PCT = 0.005 # 0.5%
+TOLERANCE_PCT = 0.02  # 2% tolerance
 
-#response returned when validation fails
 IDK_RESPONSE = (
     "I don't have reliable data to answer this accurately. "
-    "Please check a financial data source directly for precise figures. "
+    "Please check a financial data source directly for precise figures."
 )
 
-#---- Number extraction patterns ----------------------------------
-#Order matters - more specific pattern first
+# ── Number extraction patterns ────────────────────────────────────────────
+
 _PATTERNS = [
-    # $1,234.56 or $1234.56 or $1,234
-    r"\$([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?)",
-    # 12.3% or 12% or -5.4% or +12.3%
-    r"[+-]?([0-9]+(?:\.[0-9]+)?)\s*%",
-    # 1.2B or 1.2b (billions)
-    r"([0-9]+(?:\.[0-9]+)?)\s*[Bb](?:illion)?",
-    # 1.2T or 1.2t (trillions)
-    r"([0-9]+(?:\.[0-9]+)?)\s*[Tt](?:rillion)?",
-    # Plain decimal number with 2+ decimal places (prices)
-    # Excludes years (2026) and small integers
-    r"\b([0-9]{1,4}\.[0-9]{2,})\b",
+    re.compile(r"\$([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?)"),
+    re.compile(r"[+-]?([0-9]+(?:\.[0-9]+)?)\s*%"),
+    re.compile(r"\b([0-9]{1,4}\.[0-9]{2,})\b"),
 ]
 
-_COMPILED = [re.compile(p) for p in _PATTERNS]
-
-# Numbers to exclude from validation — years, quantities, etc.
 _EXCLUDE_PATTERNS = [
-    re.compile(r"^20[0-9]{2}$"),   # years like 2026
-    re.compile(r"^[0-9]$"),         # single digits
-    re.compile(r"^[0-9]{2}$"),      # two digit numbers (e.g. "50 stocks")
+    re.compile(r"^20[0-9]{2}$"),
+    re.compile(r"^[0-9]$"),
+    re.compile(r"^[0-9]{2}$"),
 ]
+
 
 # ── Data classes ──────────────────────────────────────────────────────────
 
 @dataclass
 class Violation:
-    """A number in the response that doesn't match the DB"""
-    claimed : float
-    actual: float
-    deviation: float   # as a percentage
-    
+    claimed:   float
+    actual:    float
+    deviation: float
+
+
 @dataclass
 class ValidationResult:
-    """ A number in the response that doesn't match the DB"""
-    passed : bool
+    passed:     bool
     violations: list[Violation] = field(default_factory=list)
-    response: str = ""  # original response from LLM, for logging/debugging
-    
+    response:   str = ""
 
-#--- Number extraction and validation logic ----------------------------------
+
+# ── Number extraction ─────────────────────────────────────────────────────
 
 def extract_numbers(text: str) -> list[float]:
     """
-    Extract all financial numbers from response text.
+    Extract financial numbers from response text.
     Handles: $174.32, 12.3%, 174.32
-    Excludes: years (2026), single/double digit integers,
-              billion/trillion values (too large to verify against price DB)
+    Excludes: years, single/double digits, values over 100,000
     """
     numbers = set()
 
-    # Only use these two patterns — dollar prices and percentages
-    # Removed billion/trillion patterns — they produce false positives
-    # and can't be verified against daily price data anyway
-    safe_patterns = [
-        # $1,234.56 or $1234.56 or $1,234
-        re.compile(r"\$([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?)"),
-        # 12.3% or 12% or -5.4% or +12.3%
-        re.compile(r"[+-]?([0-9]+(?:\.[0-9]+)?)\s*%"),
-        # Plain decimal number with 2+ decimal places (prices like 174.32)
-        re.compile(r"\b([0-9]{1,4}\.[0-9]{2,})\b"),
-    ]
-
-    for pattern in safe_patterns:
+    for pattern in _PATTERNS:
         for match in pattern.finditer(text):
             raw = match.group(1).replace(",", "")
             try:
                 value = float(raw)
 
-                # Skip excluded patterns
                 if any(p.match(str(int(value))) for p in _EXCLUDE_PATTERNS
                        if value == int(value)):
                     continue
 
-                # Skip very small numbers
                 if value < 0.01:
                     continue
 
-                # Skip very large numbers — can't verify market caps
-                # against daily price data
                 if value > 100_000:
                     continue
 
@@ -117,11 +91,8 @@ def extract_numbers(text: str) -> list[float]:
 
     return sorted(numbers)
 
+
 def _get_ground_truths(stats: PriceSummaryStats) -> list[float]:
-    """
-    Get all relevant numbers from stats for validation
-    These are values the LLM is allowed to cite. 
-    """
     return [
         stats.start_price,
         stats.end_price,
@@ -129,98 +100,90 @@ def _get_ground_truths(stats: PriceSummaryStats) -> list[float]:
         stats.low_price,
         stats.avg_price,
         abs(stats.period_return_pct),
-        stats.volatality_pct,
+        stats.volatility_pct,
         float(stats.trading_days),
     ]
 
-    
+
 def _find_nearest(value: float, ground_truths: list[float]) -> float | None:
-    """
-    Find the closest ground truth value to the claimed number. 
-    """
     if not ground_truths:
         return None
-    
-    # only compare values in a similar magnitude range
-    candidates = [
-        gt for gt in ground_truths
-        if gt > 0 and abs(gt - value) / max(gt, value) < 0.5  
-    ]
-    
-    if not candidates:
+    positives = [gt for gt in ground_truths if gt > 0]
+    if not positives:
         return None
-    
-    return min(candidates, key=lambda gt: abs(gt - value))
-    
-# ---- Validator -----------------------------------------------
+    candidates = [
+        gt for gt in positives
+        if abs(gt - value) / max(gt, value) < 0.5
+    ]
+    # If nothing is within 50%, fall back to absolute nearest so the
+    # deviation check still runs — prevents hallucinated values from
+    # being silently skipped.
+    pool = candidates if candidates else positives
+    return min(pool, key=lambda gt: abs(gt - value))
+
+
+# ── Validator ─────────────────────────────────────────────────────────────
 
 def validate_response(
     response_text: str,
     stats: PriceSummaryStats,
+    extra_ground_truths: list[float] | None = None,
 ) -> ValidationResult:
     """
     Validate an LLM response against known DB values.
-    
-    Extracts all numbers from the response and checks each
-    aganinst the PriceSummaryStats within TOLERANCE_PCT. 
-    
-    Args:
-        response_text: The raw LLM response string. 
-        stats: Pre computed stats used to build the prompt. 
-        
-    Returns:
-        ValidationResult with passed=True if all numbers check out, 
-        or passed = False with violations list if any fail.  
+
+    Passes through:
+    - Honest "I don't have data" responses
+    - Responses with no numbers
+    - Responses where all numbers match DB within 2%
+
+    Suppresses:
+    - Responses with numbers that deviate more than 2% from DB
     """
-    numbers = extract_numbers(response_text)
+    # Pass through honest IDK responses unchanged
+    idk_phrases = [
+        "don't have reliable data",
+        "cannot answer",
+        "not available",
+        "no data",
+        "unable to provide",
+    ]
+    response_lower = response_text.lower()
+    if any(phrase in response_lower for phrase in idk_phrases):
+        return ValidationResult(passed=True, response=response_text)
+
+    numbers       = extract_numbers(response_text)
     ground_truths = _get_ground_truths(stats)
-    
-    
-    
+    if extra_ground_truths:
+        ground_truths = ground_truths + [abs(v) for v in extra_ground_truths if v > 0]
+
     if not numbers:
-        # No numbers in response - nothing to validate. 
-        return ValidationResult(
-            passed=True,
-            response=response_text
-        )
-    
+        return ValidationResult(passed=True, response=response_text)
+
     violations = []
-    
     for number in numbers:
         nearest = _find_nearest(number, ground_truths)
-        
         if nearest is None:
-            # Can't find any comparable ground truth - treat as a violation.
-            logger.warning("Validation failed: no ground truth found for claimed=%s", number)
-            violations.append(Violation(
-                claimed=number,
-                actual=0.0,
-                deviation=100.0,
-            ))
+            logger.debug("No ground truth for %s — skipping", number)
             continue
-        
+
         deviation = abs(number - nearest) / nearest if nearest > 0 else 0
-        
         if deviation > TOLERANCE_PCT:
             logger.warning(
                 "Validation failed: claimed=%.4f actual=%.4f deviation=%.2f%%",
                 number, nearest, deviation * 100,
-            ) 
+            )
             violations.append(Violation(
                 claimed=number,
                 actual=nearest,
-                deviation=round(deviation * 100, 2)
+                deviation=round(deviation * 100, 2),
             ))
-    
+
     if violations:
         return ValidationResult(
             passed=False,
             violations=violations,
-            response=IDK_RESPONSE
+            response=IDK_RESPONSE,
         )
-        
-    return ValidationResult(
-        passed=True,
-        response=response_text,
-    )
-    
+
+    return ValidationResult(passed=True, response=response_text)

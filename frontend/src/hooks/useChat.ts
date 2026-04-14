@@ -12,7 +12,7 @@ export interface ChatMessage {
 export function useChat(symbol: string, range: TimeRange) {
   const [messages,   setMessages]   = useState<ChatMessage[]>([])
   const [streaming,  setStreaming]   = useState(false)
-  const abortRef                    = useRef<AbortController>()
+  const abortRef                    = useRef<AbortController | undefined>(undefined)
 
   const sendMessage = useCallback(async (question: string) => {
     if (!question.trim() || streaming) return

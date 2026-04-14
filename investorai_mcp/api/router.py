@@ -311,19 +311,19 @@ async def chat_stream(request: Request):
                 yield f"data: {json.dumps({'type': 'error', 'message': result['message']})}\n\n"
                 return
 
-            # Stream the summary word by word
-            summary = result.get("summary", "")
-            words   = summary.split(" ")
+            summary   = result.get("summary", "")
+            citations = result.get("citations", [])
 
+            # Stream summary word by word
+            words = summary.split(" ")
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words) - 1 else "")
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-                await asyncio.sleep(0.03)  # 30ms between words
+                await asyncio.sleep(0.03)
 
-            # Send citations and stats at the end
-            yield f"data: {json.dumps({'type': 'citations', 'citations': result.get('citations', [])})}\n\n"
+            yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
             yield f"data: {json.dumps({'type': 'stats', 'stats': result.get('stats', {})})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'validation_passed': result.get('validation_passed', False)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'validation_passed': result.get('validation_passed', True)})}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

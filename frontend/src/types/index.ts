@@ -16,14 +16,15 @@ export interface PricePoint {
 export interface PriceHistory {
     symbol: string
     range: string
-    history: PricePoint[]
+    prices: PricePoint[]
     total_days: number
-    start_price: string
-    end_price: string
-    high_price: string
-    low_price: string
+    start_price: number
+    end_price: number
+    high_price: number
+    low_price: number
     period_return_pct: number
     is_stale: boolean
+    data_age_hours?: number
 }
 
 export interface DailySummary {
