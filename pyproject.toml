@@ -9,6 +9,7 @@ license = { text = "Apache-2.0" }
 dependencies = [
     "fastmcp>=2.0",
     "fastapi>=0.110",
+    "slowapi>=0.1.9",
     "uvicorn[standard]>=0.29",
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.20",
@@ -43,6 +44,15 @@ dev = [
     "pre-commit>=3.7",
     "respx>=0.21",
 ]
+
+[tool.hatch.build]
+ignore-vcs = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["investorai_mcp"]
+
+[tool.hatch.build.targets.editable]
+packages = ["investorai_mcp"]
 
 [build-system]
 requires = ["hatchling"]

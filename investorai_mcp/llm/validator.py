@@ -71,43 +71,50 @@ class ValidationResult:
 
 def extract_numbers(text: str) -> list[float]:
     """
-    Extract all financial numbers from response text. 
-    
-    Handles: $174.32, 12.3%, 1.2B, 1.2T, 174.32
-    Excludes: years (2026), single/double digit integers
-
-    Returns list of floats - deduplicated and sorted
+    Extract all financial numbers from response text.
+    Handles: $174.32, 12.3%, 174.32
+    Excludes: years (2026), single/double digit integers,
+              billion/trillion values (too large to verify against price DB)
     """
     numbers = set()
-    
-    for pattern in _COMPILED:
+
+    # Only use these two patterns — dollar prices and percentages
+    # Removed billion/trillion patterns — they produce false positives
+    # and can't be verified against daily price data anyway
+    safe_patterns = [
+        # $1,234.56 or $1234.56 or $1,234
+        re.compile(r"\$([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]+)?)"),
+        # 12.3% or 12% or -5.4% or +12.3%
+        re.compile(r"[+-]?([0-9]+(?:\.[0-9]+)?)\s*%"),
+        # Plain decimal number with 2+ decimal places (prices like 174.32)
+        re.compile(r"\b([0-9]{1,4}\.[0-9]{2,})\b"),
+    ]
+
+    for pattern in safe_patterns:
         for match in pattern.finditer(text):
             raw = match.group(1).replace(",", "")
             try:
                 value = float(raw)
-                
-                # apply billion/trillions multipliers
-                full_match = match.group(0).lower()
-                if "b" in full_match and "%" not in full_match:
-                    value *= 1_000_000_000
-                elif "t" in full_match and "%" not in full_match:
-                    value *= 1_000_000_000_000
-            
-                #skip excluded patterns
+
+                # Skip excluded patterns
                 if any(p.match(str(int(value))) for p in _EXCLUDE_PATTERNS
-                    if value == int(value)):
-                    
+                       if value == int(value)):
                     continue
-                
-                # skip very small numbers (rounding artifacts)
+
+                # Skip very small numbers
                 if value < 0.01:
                     continue
-                
-                numbers.add(round(value, 4)) # round to 4 decimals to avoid tiny float differences
-            
+
+                # Skip very large numbers — can't verify market caps
+                # against daily price data
+                if value > 100_000:
+                    continue
+
+                numbers.add(round(value, 4))
+
             except (ValueError, OverflowError):
                 continue
-            
+
     return sorted(numbers)
 
 def _get_ground_truths(stats: PriceSummaryStats) -> list[float]:
@@ -167,6 +174,8 @@ def validate_response(
     """
     numbers = extract_numbers(response_text)
     ground_truths = _get_ground_truths(stats)
+    
+    
     
     if not numbers:
         # No numbers in response - nothing to validate. 

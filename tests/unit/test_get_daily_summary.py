@@ -79,7 +79,7 @@ async def test_returns_all_required_fields(mock_manager):
         "symbol", "range", "start_date", "end_date", 
         "start_price", "end_price", "period_return_pct", 
         "high_price", "high_date", "low_price", "low_date",
-        "avg_price", "avg_daily_volume", "volatality_pct", 
+        "avg_price", "avg_daily_volume", "volatality_pct",
         "trading_days", "is_stale", "data_age_hours"
     ]:
         assert field in result, f"Missing field: {field}"

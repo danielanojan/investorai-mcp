@@ -67,6 +67,8 @@ def _register_tools():
     from investorai_mcp.tools import get_cache_status  # noqa: F401
     from investorai_mcp.tools import refresh_ticker     # noqa: F401
     from investorai_mcp.tools import get_news
+    from investorai_mcp.tools import get_trend_summary    # noqa: F401
+    from investorai_mcp.tools import get_sentiment        # noqa: F401
     
 async def _start_mcp_stdio() -> None:
     logger.info("Starting MCP server", transport="stdio")
@@ -84,6 +86,45 @@ async def _start_mcp_http() -> None:
         host="0.0.0.0",
         port=settings.mcp_http_port,
     )
+
+
+### FastAPI app factory -----------------------------------
+
+
+def create_app():
+    """
+    Create and configure FastAPI application.
+    """
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from slowapi import _rate_limit_exceeded_handler    
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.middleware import SlowAPIMiddleware
+    
+    from investorai_mcp.api.error_handler import rate_limit_handler
+    from investorai_mcp.api.rate_limit import limiter
+    from investorai_mcp.api.router import router
+    
+    app = FastAPI(title="InvestorAI BFF", 
+                  description="Backend for frontend - REST API for the InvestorAI Web UI",
+                  version="0.1.0")
+    
+    #CORS - allow React dev server
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://localhost:3000"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    #Rate limiting
+    app.state.limiter = limiter
+    app.add_middleware(SlowAPIMiddleware)
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+    
+    app.include_router(router)
+    return app
+    
     
 async def _main() -> None:
     logging.basicConfig(level=settings.log_level)
