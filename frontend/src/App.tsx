@@ -83,19 +83,19 @@ function Dashboard() {
             )}
 
             {!isLoading && (
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-2 space-y-6">
-                    {summary && <StatsCard summary={summary} />}
-                    {prices   && <PriceChart data={prices} />}
-                  </div>
-                  <div className="lg:col-span-1">
-                    <NewsFeed articles={news || []} symbol={selected.symbol} />
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-6">
+                  {summary && <StatsCard summary={summary} />}
+                  {prices   && <PriceChart data={prices} />}
                 </div>
-                <ChatPanel symbol={selected.symbol} range={range} />
-              </>
+                <div className="lg:col-span-1">
+                  <NewsFeed articles={news || []} symbol={selected.symbol} />
+                </div>
+              </div>
             )}
+
+            {/* key=symbol resets chat on ticker change; range changes leave it mounted */}
+            <ChatPanel key={selected.symbol} symbol={selected.symbol} range={range} />
           </div>
         )}
       </main>

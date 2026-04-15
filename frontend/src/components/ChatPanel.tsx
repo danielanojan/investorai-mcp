@@ -80,10 +80,15 @@ function Message({ message }: { message: ChatMessage }) {
 }
 
 const SUGGESTIONS = [
+  "What day is today?",
+  "Which tickers do you support?",
+  "Compare the performance of Apple, Microsoft and Chevron in last 3 years?",
+  "Extract the news of Apple and Tesla?",
   "How has this stock performed this year?",
   "What is the 52-week high and low?",
   "How volatile is this stock?",
   "What is the latest news?",
+  ,
 ]
 
 export default function ChatPanel({ symbol, range }: Props) {
