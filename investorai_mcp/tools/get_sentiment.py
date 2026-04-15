@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.models import NewsArticle
-from investorai_mcp.llm.litellm_client import call_llm
+from investorai_mcp.llm.litellm_client import call_llm, lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
@@ -69,91 +69,89 @@ async def get_sentiment(
             "hint": "Use search_ticker tool to find supported tickers."
         }
     
-    # fetch cached news articles
-    async with AsyncSessionLocal() as session:
-        stmt = (
-            select(NewsArticle)
-            .where(NewsArticle.symbol == symbol)
-            .order_by(NewsArticle.published_at.desc())
-            .limit(limit)
-        )
-        result = await session.execute(stmt)
-        scalars_obj = result.scalars()
-        if inspect.isawaitable(scalars_obj):
-            scalars_obj = await scalars_obj
+    with lf_span("get_sentiment", input={"symbol": symbol, "limit": limit}):
+        # fetch cached news articles
+        async with AsyncSessionLocal() as session:
+            stmt = (
+                select(NewsArticle)
+                .where(NewsArticle.symbol == symbol)
+                .order_by(NewsArticle.published_at.desc())
+                .limit(limit)
+            )
+            result = await session.execute(stmt)
+            scalars_obj = result.scalars()
+            if inspect.isawaitable(scalars_obj):
+                scalars_obj = await scalars_obj
 
-        if hasattr(scalars_obj, "all_return_value"):
-            article_rows = scalars_obj.all_return_value
-        else:
-            all_result = scalars_obj.all()
-            article_rows = await all_result if inspect.isawaitable(all_result) else all_result
+            if hasattr(scalars_obj, "all_return_value"):
+                article_rows = scalars_obj.all_return_value
+            else:
+                all_result = scalars_obj.all()
+                article_rows = await all_result if inspect.isawaitable(all_result) else all_result
 
-        articles = list(article_rows)
-        
-    if not articles:
-        return {
-            "error": True,
-            "sentiment": "neutral",
-            "score": 0,
-            "message": f"No news articles found for {symbol}. Sentiment is neutral by default.",
-            "citations": []
-        }
-        
-    # build headlines block with citations. 
-    headlines_text = "\n".join(
-        f"- {a.headline} "
-        f"[source: {a.source} • {a.url}]"
-        for a in articles
-    )
-    session_hash = hashlib.sha256(
-        f"{symbol}{datetime.now(timezone.utc).date()}sentiment".encode()
-    ).hexdigest()[:16]
-    
-    #Call LLM for sentiment analysis
-    try:
-        import json
-        raw = await call_llm(
-            messages=[
-                {"role": "system", "content": _SENTIMENT_SYSTEM},
-                {"role": "user", "content": f"Headlines for {symbol}:\n{headlines_text}"},
-            ],
-            session_hash=session_hash,
-            tool_name="get_sentiment",
-            max_tokens=200,
+            articles = list(article_rows)
+
+        if not articles:
+            return {
+                "error": True,
+                "sentiment": "neutral",
+                "score": 0,
+                "message": f"No news articles found for {symbol}. Sentiment is neutral by default.",
+                "citations": []
+            }
+
+        # build headlines block with citations.
+        headlines_text = "\n".join(
+            f"- {a.headline} "
+            f"[source: {a.source} • {a.url}]"
+            for a in articles
         )
-        
-        
-        #parse JSON response
-        #Strip any accidental markdown fences
-        clean = raw.strip().replace("```json", "").replace("```", "").strip()
-        sentiment_data = json.loads(clean)  
-        
-    except Exception as e:
+        session_hash = hashlib.sha256(
+            f"{symbol}{datetime.now(timezone.utc).date()}sentiment".encode()
+        ).hexdigest()[:16]
+
+        #Call LLM for sentiment analysis
+        try:
+            import json
+            raw = await call_llm(
+                messages=[
+                    {"role": "system", "content": _SENTIMENT_SYSTEM},
+                    {"role": "user", "content": f"Headlines for {symbol}:\n{headlines_text}"},
+                ],
+                session_hash=session_hash,
+                tool_name="get_sentiment",
+                max_tokens=200,
+            )
+
+            #parse JSON response
+            #Strip any accidental markdown fences
+            clean = raw.strip().replace("```json", "").replace("```", "").strip()
+            sentiment_data = json.loads(clean)
+
+        except Exception as e:
+            return {
+                "error": True,
+                "code": "LLM_UNAVAILABLE",
+                "message": f"Sentiment Analysis failed: {e}"
+            }
+
+        # Build citations from articles used
+        citations = [
+            {
+                "type": "news",
+                "headline": a.headline,
+                "publisher": a.source,
+                "url": a.url,
+            }
+            for a in articles
+        ]
+
         return {
-            "error": True,
-            "code": "LLM_UNAVAILABLE",
-            "message": f"Sentiment Analysis failed: {e}"
+            "symbol": symbol,
+            "sentiment": sentiment_data.get("overall", "neutral"),
+            "score": sentiment_data.get("score", 0),
+            "reasoning": sentiment_data.get("reasoning", ""),
+            "key_themes": sentiment_data.get("key_themes", []),
+            "citations": citations,
+            "articles_analyzed": len(articles),
         }
-        
-    # Build citations from articles used
-    citations = [
-        {
-            "type": "news", 
-            "headline": a.headline,
-            "publisher": a.source,
-            "url": a.url,
-        }
-        for a in articles
-    ]
-    
-    return {
-        "symbol": symbol,
-        "sentiment": sentiment_data.get("overall", "neutral"),
-        "score": sentiment_data.get("score", 0),
-        "reasoning": sentiment_data.get("reasoning", ""),
-        "key_themes": sentiment_data.get("key_themes", []),
-        "citations": citations,
-        "articles_analyzed": len(articles),
-    }
-    
-    

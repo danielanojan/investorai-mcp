@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ############## LLM (BYOK) 
     llm_api_key : str | None = None
     llm_model : str = "claude-sonnet-4-20250514"
-    llm_provider : str = "anthropic"    #anthrophic | openai | grok
+    llm_provider : str = "anthropic"    # anthropic | openai | groq
     
     
     ############## Langfuse monitoring
@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     rate_limit_per_min : int = 60
     
     ########Logging
-    log_level : Literal["DEBUG", "INFO", "WaRNING", "ERROR"] = "INFO"
+    log_level : Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format : Literal["json", "text"] = "text"
     
     # ── Database ───────────────────────────────────────────────────────────────

@@ -5,7 +5,15 @@ from datetime import datetime, timezone
 from typing import Generic, TypeVar
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def _get_insert(engine_url: str):
+    if "postgresql" in engine_url:
+        return pg_insert
+    return sqlite_insert
 
 from investorai_mcp.data.base import DataProviderAdapter, OHLCVRecord
 from investorai_mcp.db.models import CacheMetadata, PriceHistory, Ticker
@@ -129,7 +137,8 @@ class CacheManager:
         )
         result = await self._session.execute(stmt)
         meta = result.scalar_one_or_none()
-        
+        result.close()
+
         if meta is None:
             meta = CacheMetadata(
                 symbol=symbol,
@@ -162,6 +171,7 @@ class CacheManager:
         )
         result = await self._session.execute(stmt)
         rows = list(result.scalars().all())
+        result.close()
         return rows
     
     ####### Private : refresh --------------------------   
@@ -190,10 +200,11 @@ class CacheManager:
     async def _upsert_prices(
         self, symbol: str, records: list[OHLCVRecord]
     ) -> None:
-        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-        
+        from investorai_mcp.config import settings
+        insert = _get_insert(settings.database_url)
+
         for record in records:
-            stmt = sqlite_insert(PriceHistory).values(
+            stmt = insert(PriceHistory).values(
                 symbol=symbol,
                 date=record.date,
                 open=record.open,

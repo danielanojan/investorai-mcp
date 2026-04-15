@@ -1,12 +1,21 @@
 import { useState, useRef, useCallback } from 'react'
 import type { Citation, TimeRange } from '../types'
 
+export interface SentimentResult {
+  overall:    string
+  score:      number
+  reasoning:  string
+  key_themes: string[]
+}
+
 export interface ChatMessage {
-  role:       'user' | 'assistant'
-  content:    string
-  citations?: Citation[]
-  streaming?: boolean
-  error?:     boolean
+  role:        'user' | 'assistant'
+  content:     string
+  citations?:  Citation[]
+  sentiment?:  SentimentResult | null
+  sentiments?: Record<string, SentimentResult> | null
+  streaming?:  boolean
+  error?:      boolean
 }
 
 export function useChat(symbol: string, _range: TimeRange, apiKey: string | null) {
@@ -45,8 +54,10 @@ export function useChat(symbol: string, _range: TimeRange, apiKey: string | null
 
       const reader    = response.body!.getReader()
       const decoder   = new TextDecoder()
-      let   buffer    = ''
-      let   citations: Citation[] = []
+      let   buffer     = ''
+      let   citations:  Citation[] = []
+      let   sentiment:  SentimentResult | null = null
+      let   sentiments: Record<string, SentimentResult> | null = null
 
       while (true) {
         const { done, value } = await reader.read()
@@ -82,6 +93,14 @@ export function useChat(symbol: string, _range: TimeRange, apiKey: string | null
               citations = event.citations || []
             }
 
+            if (event.type === 'sentiment') {
+              sentiment = event.sentiment || null
+            }
+
+            if (event.type === 'sentiments') {
+              sentiments = event.sentiments || null
+            }
+
             if (event.type === 'done') {
               setMessages(prev => {
                 const updated = [...prev]
@@ -89,8 +108,10 @@ export function useChat(symbol: string, _range: TimeRange, apiKey: string | null
                 if (last.role === 'assistant') {
                   updated[updated.length - 1] = {
                     ...last,
-                    streaming: false,
+                    streaming:  false,
                     citations,
+                    sentiment,
+                    sentiments,
                   }
                 }
                 return updated

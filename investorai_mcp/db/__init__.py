@@ -34,11 +34,20 @@ Request comes in
 # poolclass=StaticPool - uses single persistant connection instead of a pool. Its important for SQL in tests and single process apps because 
 #SQLite does not handle multiple connections to the same file well. StaticPool ensures all parts of the app use the same connection, which is safer for SQLite's concurrency model.
 
+
+database_url = os.environ.get("DATABASE_URL", settings.database_url)
+
+# Railway provides postgresql:// but SQLAlchemy needs postgresql+asyncpg://
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace(
+        "postgresql://", "postgresql+asyncpg://", 1
+    )
+
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     echo=False,
-    connect_args={"check_same_thread": False}, 
-    poolclass=StaticPool,
+    connect_args={"check_same_thread": False}
+    if "sqlite" in database_url else {},
 )
 
 # Enable foreign keys for SQLite
