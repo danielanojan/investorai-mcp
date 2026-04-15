@@ -299,14 +299,14 @@ export default function MonitoringDashboard() {
                   </div>
                 ) : (
                   <>
-                    <Section title="Percentiles (all-time, successful calls)">
+                    <Section title="End-to-end latency (all-time, successful calls)">
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <StatCard label="P50"  value={latStats.p50_ms != null ? `${latStats.p50_ms} ms` : '—'} icon={Clock}       colour="green"  />
                         <StatCard label="P95"  value={latStats.p95_ms != null ? `${latStats.p95_ms} ms` : '—'} icon={Clock}       colour="amber"  />
                         <StatCard label="P99"  value={latStats.p99_ms != null ? `${latStats.p99_ms} ms` : '—'} icon={Clock}       colour="red"    />
-                        <StatCard label="Avg"  value={latStats.avg_ms  != null ? `${latStats.avg_ms}  ms` : '—'} icon={TrendingUp} colour="blue"   />
+                        <StatCard label="Avg"  value={latStats.avg_ms  != null ? `${latStats.avg_ms} ms` : '—'} icon={TrendingUp} colour="blue"   />
                       </div>
-                      <div className="mt-4 grid grid-cols-2 lg:grid-cols-2 gap-4">
+                      <div className="mt-4 grid grid-cols-2 gap-4">
                         <StatCard label="Total calls"    value={latStats.total_calls}   icon={Activity} colour="blue"  />
                         <StatCard
                           label="Outliers > P95"
@@ -317,6 +317,101 @@ export default function MonitoringDashboard() {
                           alert={latStats.outlier_count > 0}
                         />
                       </div>
+                    </Section>
+
+                    {/* TTFT section */}
+                    <Section title="Time to first token (TTFT)">
+                      {latStats.ttft?.samples > 0 ? (
+                        <>
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <StatCard
+                              label="TTFT P50"
+                              value={latStats.ttft.p50_ms != null ? `${latStats.ttft.p50_ms} ms` : '—'}
+                              icon={Zap}
+                              colour="green"
+                            />
+                            <StatCard
+                              label="TTFT P95"
+                              value={latStats.ttft.p95_ms != null ? `${latStats.ttft.p95_ms} ms` : '—'}
+                              icon={Zap}
+                              colour="amber"
+                            />
+                            <StatCard
+                              label="TTFT P99"
+                              value={latStats.ttft.p99_ms != null ? `${latStats.ttft.p99_ms} ms` : '—'}
+                              icon={Zap}
+                              colour="red"
+                            />
+                            <StatCard
+                              label="TTFT Avg"
+                              value={latStats.ttft.avg_ms != null ? `${latStats.ttft.avg_ms} ms` : '—'}
+                              sub={`${latStats.ttft.samples} samples`}
+                              icon={TrendingUp}
+                              colour="blue"
+                            />
+                          </div>
+                          <p className="text-xs text-gray-400 mt-3">
+                            TTFT = time from request received to first token streamed.
+                            In this architecture this equals server processing time (LLM call + data fetch).
+                          </p>
+                        </>
+                      ) : (
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-400">
+                          No TTFT data yet — make some chat queries first.
+                        </div>
+                      )}
+                    </Section>
+
+                    {/* Component timing breakdown */}
+                    <Section title="Component timing breakdown">
+                      {latStats.components?.db_fetch?.samples > 0 ? (
+                        <>
+                          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="text-left text-xs text-gray-400 uppercase tracking-wide border-b border-gray-100 bg-gray-50">
+                                    <th className="px-4 py-3">Component</th>
+                                    <th className="px-4 py-3 text-right">Avg</th>
+                                    <th className="px-4 py-3 text-right">P50</th>
+                                    <th className="px-4 py-3 text-right">P95</th>
+                                    <th className="px-4 py-3 text-right">P99</th>
+                                    <th className="px-4 py-3 text-right">Samples</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[
+                                    { key: 'db_fetch',   label: 'DB fetch + news',  colour: 'text-blue-600'   },
+                                    { key: 'llm',        label: 'LLM call',         colour: 'text-purple-600' },
+                                    { key: 'validation', label: 'Validation',        colour: 'text-green-600'  },
+                                  ].map(({ key, label, colour }) => {
+                                    const s = latStats.components?.[key]
+                                    const fmt = (v: number | null) => v != null ? `${v} ms` : '—'
+                                    return (
+                                      <tr key={key} className="border-b border-gray-50 hover:bg-gray-50">
+                                        <td className={`px-4 py-3 font-medium ${colour}`}>{label}</td>
+                                        <td className="px-4 py-3 text-right text-gray-700">{fmt(s?.avg_ms)}</td>
+                                        <td className="px-4 py-3 text-right text-gray-700">{fmt(s?.p50_ms)}</td>
+                                        <td className="px-4 py-3 text-right text-gray-700">{fmt(s?.p95_ms)}</td>
+                                        <td className="px-4 py-3 text-right text-gray-700">{fmt(s?.p99_ms)}</td>
+                                        <td className="px-4 py-3 text-right text-gray-400 text-xs">{s?.samples ?? 0}</td>
+                                      </tr>
+                                    )
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                          <p className="text-xs text-gray-400 mt-3">
+                            Timings are per-request averages summed across all symbols analysed.
+                            Total latency &gt; db_fetch + llm + validation due to orchestration overhead.
+                          </p>
+                        </>
+                      ) : (
+                        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm text-gray-400">
+                          No component timing data yet — make some chat queries first.
+                        </div>
+                      )}
                     </Section>
 
                     <Section title={`Slow queries exceeding P95 (${latStats.p95_ms} ms)`}>
@@ -333,6 +428,7 @@ export default function MonitoringDashboard() {
                                   <th className="px-4 py-3">Question</th>
                                   <th className="px-4 py-3">Symbols</th>
                                   <th className="px-4 py-3">Latency</th>
+                                  <th className="px-4 py-3">TTFT</th>
                                   <th className="px-4 py-3">Excess</th>
                                   <th className="px-4 py-3">Time</th>
                                 </tr>
@@ -352,6 +448,9 @@ export default function MonitoringDashboard() {
                                     </td>
                                     <td className="px-4 py-3 font-semibold text-amber-600">
                                       {o.total_latency_ms} ms
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-500 text-xs">
+                                      {o.ttft_ms != null ? `${o.ttft_ms} ms` : '—'}
                                     </td>
                                     <td className="px-4 py-3 text-red-500 text-xs">
                                       +{o.excess_ms} ms

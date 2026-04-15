@@ -53,7 +53,8 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
         .limit(50)
     )
     result = await session.execute(stmt)
-    return list(result.scalars().all())
+    rows = list(result.scalars().all())
+    return rows
 
 @mcp.tool()
 async def get_news(

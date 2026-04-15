@@ -187,6 +187,10 @@ class ChatRequestLog(Base):
     symbols: Mapped[str] = mapped_column(String, nullable=False)
     range: Mapped[str] = mapped_column(String(4), nullable=False)
     total_latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    db_fetch_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    llm_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    validation_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="success")
 
     __table_args__ = (

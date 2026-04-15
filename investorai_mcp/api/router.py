@@ -29,6 +29,10 @@ async def _log_chat_request(
     range_: str,
     total_latency_ms: int,
     status: str,
+    ttft_ms: int | None = None,
+    db_fetch_ms: int | None = None,
+    llm_ms: int | None = None,
+    validation_ms: int | None = None,
 ) -> None:
     """Persist one chat call row to chat_request_log."""
     from investorai_mcp.db import AsyncSessionLocal
@@ -39,6 +43,10 @@ async def _log_chat_request(
             symbols=symbols,
             range=range_,
             total_latency_ms=total_latency_ms,
+            ttft_ms=ttft_ms,
+            db_fetch_ms=db_fetch_ms,
+            llm_ms=llm_ms,
+            validation_ms=validation_ms,
             status=status,
             ts=datetime.now(timezone.utc),
         ))
@@ -331,9 +339,13 @@ async def chat_stream(request: Request):
         )
 
     async def event_stream():
-        _start_ns  = _time.time_ns()
-        _total_ms  = 0
-        _req_status = "success"
+        _start_ns    = _time.time_ns()
+        _total_ms    = 0
+        _ttft_ms:         int | None = None
+        _db_fetch_ms: int | None = None
+        _llm_ms:      int | None = None
+        _validation_ms: int | None = None
+        _req_status  = "success"
 
         try:
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
@@ -353,6 +365,12 @@ async def chat_stream(request: Request):
                 history=history if history else None,
             )
 
+            # Extract component timings before streaming begins
+            _timings      = result.get("_timings") or {}
+            _db_fetch_ms  = _timings.get("db_fetch_ms")
+            _llm_ms       = _timings.get("llm_ms")
+            _validation_ms = _timings.get("validation_ms")
+
             # Capture server-side processing time (before streaming)
             _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
 
@@ -365,6 +383,9 @@ async def chat_stream(request: Request):
             words   = summary.split(" ")
 
             for i, word in enumerate(words):
+                # Capture time-to-first-token on the first iteration
+                if _ttft_ms is None:
+                    _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
                 chunk = word + (" " if i < len(words) - 1 else "")
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
                 await asyncio.sleep(0.03)
@@ -386,6 +407,10 @@ async def chat_stream(request: Request):
                         symbols=symbol,
                         range_=range_,
                         total_latency_ms=_total_ms,
+                        ttft_ms=_ttft_ms,
+                        db_fetch_ms=_db_fetch_ms,
+                        llm_ms=_llm_ms,
+                        validation_ms=_validation_ms,
                         status=_req_status,
                     )
                 except Exception:
@@ -652,6 +677,33 @@ async def monitoring_latency(request: Request):
     p99 = _percentile(latencies, 99)
     avg = round(sum(latencies) / len(latencies)) if latencies else 0
 
+    # TTFT stats — only rows that have ttft_ms recorded
+    ttft_rows   = [r.ttft_ms for r in success_rows if r.ttft_ms is not None]
+    ttft_sorted = sorted(ttft_rows)
+    ttft_stats  = {
+        "p50_ms":  _percentile(ttft_sorted, 50)  if ttft_sorted else None,
+        "p95_ms":  _percentile(ttft_sorted, 95)  if ttft_sorted else None,
+        "p99_ms":  _percentile(ttft_sorted, 99)  if ttft_sorted else None,
+        "avg_ms":  round(sum(ttft_sorted) / len(ttft_sorted)) if ttft_sorted else None,
+        "samples": len(ttft_sorted),
+    }
+
+    def _component_stats(values: list[int]) -> dict:
+        s = sorted(values)
+        return {
+            "p50_ms":  _percentile(s, 50)  if s else None,
+            "p95_ms":  _percentile(s, 95)  if s else None,
+            "p99_ms":  _percentile(s, 99)  if s else None,
+            "avg_ms":  round(sum(s) / len(s)) if s else None,
+            "samples": len(s),
+        }
+
+    component_stats = {
+        "db_fetch":  _component_stats([r.db_fetch_ms   for r in success_rows if r.db_fetch_ms   is not None]),
+        "llm":       _component_stats([r.llm_ms        for r in success_rows if r.llm_ms        is not None]),
+        "validation": _component_stats([r.validation_ms for r in success_rows if r.validation_ms is not None]),
+    }
+
     outliers = sorted(
         [
             {
@@ -661,6 +713,7 @@ async def monitoring_latency(request: Request):
                 "symbols":          r.symbols,
                 "range":            r.range,
                 "total_latency_ms": r.total_latency_ms,
+                "ttft_ms":          r.ttft_ms,
                 "excess_ms":        r.total_latency_ms - p95,
             }
             for r in success_rows
@@ -679,4 +732,6 @@ async def monitoring_latency(request: Request):
         "avg_ms":         avg,
         "outlier_count":  len(outliers),
         "outliers":       outliers[:50],
+        "ttft":           ttft_stats,
+        "components":     component_stats,
     }

@@ -161,7 +161,8 @@ class CacheManager:
             .order_by(PriceHistory.date.asc())
         )
         result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        rows = list(result.scalars().all())
+        return rows
     
     ####### Private : refresh --------------------------   
     async def _refresh_prices(

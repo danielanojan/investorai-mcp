@@ -25,6 +25,7 @@ def _format_price(row: PriceHistory, price_type:str) -> dict:
         "date": row.date.isoformat(),
         "price": round(price, 4),
         "adj_close": round(row.adj_close, 4),
+        "close": round(row.close, 4),
         "avg_price": round(row.avg_price, 4),
         "volume": row.volume,
     }
