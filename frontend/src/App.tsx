@@ -5,6 +5,7 @@ import StatsCard from './components/StatsCard'
 import PriceChart from './components/PriceChart'
 import NewsFeed from './components/NewsFeed'
 import ChatPanel from './components/ChatPanel'
+import MonitoringDashboard from './components/MonitoringDashboard'
 import { getDailySummary, getPriceHistory, getNews } from './api/stocks'
 import type { Ticker, TimeRange } from './types'
 
@@ -51,13 +52,14 @@ function Dashboard() {
         {!selected && (
           <div className="text-center py-20 text-gray-400">
             <p className="text-lg">Search for a stock to get started</p>
-            <p className="text-sm mt-1">Try "Apple", "TSLA", or "semiconductor"</p>
+            <p className="text-sm mt-1">
+              Try "Apple", "TSLA", or "semiconductor"
+            </p>
           </div>
         )}
 
         {selected && (
           <div className="space-y-6">
-            {/* Range selector */}
             <div className="flex gap-2">
               {RANGES.map(r => (
                 <button
@@ -82,7 +84,6 @@ function Dashboard() {
 
             {!isLoading && (
               <>
-                {/* Top row — stats + chart */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 space-y-6">
                     {summary && <StatsCard summary={summary} />}
@@ -92,8 +93,6 @@ function Dashboard() {
                     <NewsFeed articles={news || []} symbol={selected.symbol} />
                   </div>
                 </div>
-
-                {/* Bottom row — chat panel full width */}
                 <ChatPanel symbol={selected.symbol} range={range} />
               </>
             )}
@@ -104,10 +103,15 @@ function Dashboard() {
   )
 }
 
+function AppRouter() {
+  const isPlayground = window.location.pathname === '/playground'
+  return isPlayground ? <MonitoringDashboard /> : <Dashboard />
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Dashboard />
+      <AppRouter />
     </QueryClientProvider>
   )
 }

@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     ############## Langfuse monitoring
     langfuse_host : str = "https://cloud.langfuse.com"
     langfuse_public_key : str | None = None
-    langfuse_private_key : str | None = None 
+    langfuse_secret_key : str | None = None
     
     
     ############# MCP Transport

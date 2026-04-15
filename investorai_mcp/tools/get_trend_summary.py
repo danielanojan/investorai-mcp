@@ -6,6 +6,7 @@ Supports any stock in the 50-stock universe regardless of
 which stock is currently loaded in the web UI.
 Auto-detects time range from natural language questions.
 """
+import contextlib
 import hashlib
 import re
 from datetime import date, datetime, timezone
@@ -18,13 +19,21 @@ from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.llm.citations import extract_citations
 from investorai_mcp.llm.history import compress_history
-from investorai_mcp.llm.litellm_client import call_llm
+from investorai_mcp.llm.litellm_client import call_llm, get_langfuse
 from investorai_mcp.llm.prompt_builder import build_prompt, compute_stats
 from investorai_mcp.llm.validator import IDK_RESPONSE, validate_response
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS, is_supported
 
 _adapter = YFinanceAdapter()
+
+
+def _lf_span(name: str, as_type: str = "span", **kwargs):
+    """Return a Langfuse context-manager span, or a no-op if Langfuse is not configured."""
+    lf = get_langfuse()
+    if lf:
+        return lf.start_as_current_observation(as_type=as_type, name=name, **kwargs)
+    return contextlib.nullcontext()
 
 
 # ── Range detection ───────────────────────────────────────────────────────
@@ -440,10 +449,11 @@ async def _analyse_one_symbol(
     from sqlalchemy import select
     from investorai_mcp.db.models import NewsArticle
 
-    async with AsyncSessionLocal() as session:
-        manager = CacheManager(session, _adapter)
-        await manager.ensure_ticker_exists(symbol)
-        cache_result = await manager.get_prices(symbol, effective_range)
+    with _lf_span("db_fetch", input={"symbol": symbol, "range": effective_range}):
+        async with AsyncSessionLocal() as session:
+            manager = CacheManager(session, _adapter)
+            await manager.ensure_ticker_exists(symbol)
+            cache_result = await manager.get_prices(symbol, effective_range)
 
     if not cache_result.data:
         return {
@@ -526,15 +536,16 @@ async def _analyse_one_symbol(
                 "stats":             {},
             }
 
-    async with AsyncSessionLocal() as news_session:
-        stmt = (
-            select(NewsArticle)
-            .where(NewsArticle.symbol == symbol)
-            .order_by(NewsArticle.published_at.desc())
-            .limit(10)
-        )
-        news_result = await news_session.execute(stmt)
-        recent_news = list(news_result.scalars().all())
+    with _lf_span("news_fetch", input={"symbol": symbol}):
+        async with AsyncSessionLocal() as news_session:
+            stmt = (
+                select(NewsArticle)
+                .where(NewsArticle.symbol == symbol)
+                .order_by(NewsArticle.published_at.desc())
+                .limit(10)
+            )
+            news_result = await news_session.execute(stmt)
+            recent_news = list(news_result.scalars().all())
 
     messages = build_prompt(
         stats=stats,
@@ -556,11 +567,12 @@ async def _analyse_one_symbol(
 
     # Skip number validation for news-focused responses — news articles cite
     # prices that differ from DB aggregates and would trigger false positives.
-    if news_focus:
-        from investorai_mcp.llm.validator import ValidationResult
-        validation = ValidationResult(passed=True, response=raw_response)
-    else:
-        validation = validate_response(raw_response, stats)
+    with _lf_span("validate", input={"news_focus": news_focus}):
+        if news_focus:
+            from investorai_mcp.llm.validator import ValidationResult
+            validation = ValidationResult(passed=True, response=raw_response)
+        else:
+            validation = validate_response(raw_response, stats)
     citation_result = extract_citations(validation.response)
 
     return {
@@ -687,164 +699,177 @@ async def get_trend_summary(
         f"{'_'.join(symbols)}{datetime.now(timezone.utc).date()}".encode()
     ).hexdigest()[:16]
 
-    compressed_history = None
-    if history:
-        compressed_history = await compress_history(history, session_hash=session_hash)
-
-    # Single stock — return flat dict (backwards-compatible)
-    if len(symbols) == 1:
-        return await _analyse_one_symbol(
-            symbols[0], effective_range, final_question, session_hash,
-            compressed_history, resolved_date, date_range, news_focus,
-        )
-
-    # Multiple stocks — fetch all data concurrently first
     import asyncio as _asyncio
 
     async def _fetch_data(sym: str):
         from sqlalchemy import select
         from investorai_mcp.db.models import NewsArticle
-        async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _adapter)
-            await manager.ensure_ticker_exists(sym)
-            cr = await manager.get_prices(sym, effective_range)
-            news_result = await session.execute(
-                select(NewsArticle)
-                .where(NewsArticle.symbol == sym)
-                .order_by(NewsArticle.published_at.desc())
-                .limit(6)
-            )
-            news = list(news_result.scalars().all())
+        with _lf_span("fetch_data", input={"symbol": sym, "range": effective_range}):
+            async with AsyncSessionLocal() as session:
+                manager = CacheManager(session, _adapter)
+                await manager.ensure_ticker_exists(sym)
+                cr = await manager.get_prices(sym, effective_range)
+                news_result = await session.execute(
+                    select(NewsArticle)
+                    .where(NewsArticle.symbol == sym)
+                    .order_by(NewsArticle.published_at.desc())
+                    .limit(6)
+                )
+                news = list(news_result.scalars().all())
         return sym, cr, news
 
-    fetched = await _asyncio.gather(*[_fetch_data(sym) for sym in symbols])
+    with _lf_span(
+        "get_trend_summary",
+        input={"question": question, "symbols": symbols, "range": effective_range},
+        metadata={"session_hash": session_hash, "news_focus": news_focus},
+    ):
+        compressed_history = None
+        if history:
+            with _lf_span("compress_history",
+                                 input={"history_len": len(history)}):
+                compressed_history = await compress_history(
+                    history, session_hash=session_hash
+                )
 
-    # Fast path: specific date — look up each symbol's closing price directly,
-    # no LLM needed (same as single-stock fast path).
-    if resolved_date is not None:
-        parts    = []
-        stale    = False
-        for sym, cr, _news in fetched:
+        # Single stock — return flat dict (backwards-compatible)
+        if len(symbols) == 1:
+            return await _analyse_one_symbol(
+                symbols[0], effective_range, final_question, session_hash,
+                compressed_history, resolved_date, date_range, news_focus,
+            )
+
+        # Multiple stocks — fetch all data concurrently
+        fetched = await _asyncio.gather(*[_fetch_data(sym) for sym in symbols])
+
+        # Fast path: specific date — look up each symbol's closing price directly,
+        # no LLM needed (same as single-stock fast path).
+        if resolved_date is not None:
+            parts    = []
+            stale    = False
+            for sym, cr, _news in fetched:
+                if not cr.data:
+                    parts.append(f"{sym}: no data available.")
+                    continue
+                stats = compute_stats(sym, effective_range, cr.data)
+                row   = next((r for r in cr.data if r.date == resolved_date), None)
+                if row:
+                    parts.append(
+                        f"{sym}: ${row.adj_close:.2f} [source: DB • {resolved_date}]"
+                    )
+                else:
+                    earliest = str(stats.start_date) if stats else "unknown"
+                    reason   = (
+                        f"outside available history (earliest: {earliest})"
+                        if stats and str(resolved_date) < str(stats.start_date)
+                        else "market holiday or weekend"
+                    )
+                    parts.append(f"{sym}: no data for {resolved_date} — {reason}.")
+                if cr.is_stale:
+                    stale = True
+            summary = f"Closing prices on {resolved_date}:\n" + "\n".join(parts)
+            return {
+                "multi":             True,
+                "symbols":           symbols,
+                "range":             effective_range,
+                "summary":           summary,
+                "citations":         [{"type": "db", "date": str(resolved_date)}],
+                "validation_passed": True,
+                "is_stale":          stale,
+            }
+
+        use_cot   = date_range is not None
+        all_stats = []
+        all_news  = []
+        is_stale  = False
+        for sym, cr, news in fetched:
             if not cr.data:
-                parts.append(f"{sym}: no data available.")
                 continue
-            stats = compute_stats(sym, effective_range, cr.data)
-            row   = next((r for r in cr.data if r.date == resolved_date), None)
-            if row:
-                parts.append(
-                    f"{sym}: ${row.adj_close:.2f} [source: DB • {resolved_date}]"
-                )
+            rows = cr.data
+            if date_range is not None:
+                dr_start, dr_end = date_range
+                rows = [r for r in rows if dr_start <= r.date <= dr_end]
+                if not rows:
+                    continue
+            st = compute_stats(sym, effective_range, rows)
+            if st:
+                all_stats.append(st)
+                all_news.extend(news)
+                if cr.is_stale:
+                    is_stale = True
+
+        if not all_stats:
+            return {
+                "error":   True,
+                "code":    "DATA_UNAVAILABLE",
+                "message": f"No price data available for {', '.join(symbols)}.",
+            }
+
+        # Build one combined data block and a single LLM prompt
+        from investorai_mcp.llm.prompt_builder import SYSTEM_PROMPT, COT_SYSTEM_PROMPT
+        combined_data = "\n\n".join(st.to_text() for st in all_stats)
+
+        news_block = ""
+        if all_news:
+            headlines = [
+                f"- {a.headline} ({a.source} • {a.url})"
+                for a in all_news[:15]
+            ]
+            news_block = "\nRECENT NEWS:\n" + "\n".join(headlines) + "\n"
+
+        system_prompt = COT_SYSTEM_PROMPT if use_cot else SYSTEM_PROMPT
+        messages = [{"role": "system", "content": system_prompt}]
+        if compressed_history:
+            messages.extend(compressed_history)
+
+        if news_focus and news_block:
+            user_content = (
+                f"{news_block}"
+                f"\nPRICE CONTEXT (for reference only):\n{combined_data}"
+                f"\nUser question:\n{final_question}"
+                f"\nInstruction: Answer based on the news articles above. "
+                f"Only reference price data if directly relevant to the question."
+            )
+        else:
+            user_content = (
+                f"DATA_PROVIDED:\n{combined_data}{news_block}\n\nUser question:\n{final_question}"
+            )
+        messages.append({"role": "user", "content": user_content})
+
+        try:
+            raw_response = await call_llm(
+                messages=messages,
+                session_hash=session_hash,
+                tool_name="get_trend_summary",
+            )
+        except RuntimeError as e:
+            return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}
+
+        with _lf_span("validate", input={"news_focus": news_focus}):
+            if news_focus:
+                from investorai_mcp.llm.validator import ValidationResult
+                validation = ValidationResult(passed=True, response=raw_response)
             else:
-                earliest = str(stats.start_date) if stats else "unknown"
-                reason   = (
-                    f"outside available history (earliest: {earliest})"
-                    if stats and str(resolved_date) < str(stats.start_date)
-                    else "market holiday or weekend"
+                extra_truths = [v for st in all_stats for v in [
+                    st.start_price, st.end_price, st.high_price, st.low_price,
+                    st.avg_price, abs(st.period_return_pct), st.volatility_pct,
+                ]]
+                validation = validate_response(
+                    raw_response, all_stats[0], extra_ground_truths=extra_truths
                 )
-                parts.append(f"{sym}: no data for {resolved_date} — {reason}.")
-            if cr.is_stale:
-                stale = True
-        summary = f"Closing prices on {resolved_date}:\n" + "\n".join(parts)
+        citation_result = extract_citations(validation.response)
+
         return {
             "multi":             True,
             "symbols":           symbols,
             "range":             effective_range,
-            "summary":           summary,
-            "citations":         [{"type": "db", "date": str(resolved_date)}],
-            "validation_passed": True,
-            "is_stale":          stale,
+            "summary":           citation_result.clean_text,
+            "citations": [
+                {"type": c.citation_type, "date": c.date}
+                for c in citation_result.db_citations
+            ] + [
+                {"type": c.citation_type, "publisher": c.publisher, "url": c.url}
+                for c in citation_result.news_citations
+            ],
+            "validation_passed": validation.passed,
+            "is_stale":          is_stale,
         }
-
-    use_cot   = date_range is not None
-    all_stats = []
-    all_news  = []
-    is_stale  = False
-    for sym, cr, news in fetched:
-        if not cr.data:
-            continue
-        rows = cr.data
-        if date_range is not None:
-            dr_start, dr_end = date_range
-            rows = [r for r in rows if dr_start <= r.date <= dr_end]
-            if not rows:
-                continue
-        st = compute_stats(sym, effective_range, rows)
-        if st:
-            all_stats.append(st)
-            all_news.extend(news)
-            if cr.is_stale:
-                is_stale = True
-
-    if not all_stats:
-        return {
-            "error":   True,
-            "code":    "DATA_UNAVAILABLE",
-            "message": f"No price data available for {', '.join(symbols)}.",
-        }
-
-    # Build one combined data block and a single LLM prompt
-    from investorai_mcp.llm.prompt_builder import SYSTEM_PROMPT, COT_SYSTEM_PROMPT
-    combined_data = "\n\n".join(st.to_text() for st in all_stats)
-
-    news_block = ""
-    if all_news:
-        headlines = [
-            f"- {a.headline} ({a.source} • {a.url})"
-            for a in all_news[:15]
-        ]
-        news_block = "\nRECENT NEWS:\n" + "\n".join(headlines) + "\n"
-
-    system_prompt = COT_SYSTEM_PROMPT if use_cot else SYSTEM_PROMPT
-    messages = [{"role": "system", "content": system_prompt}]
-    if compressed_history:
-        messages.extend(compressed_history)
-
-    if news_focus and news_block:
-        user_content = (
-            f"{news_block}"
-            f"\nPRICE CONTEXT (for reference only):\n{combined_data}"
-            f"\nUser question:\n{final_question}"
-            f"\nInstruction: Answer based on the news articles above. "
-            f"Only reference price data if directly relevant to the question."
-        )
-    else:
-        user_content = (
-            f"DATA_PROVIDED:\n{combined_data}{news_block}\n\nUser question:\n{final_question}"
-        )
-    messages.append({"role": "user", "content": user_content})
-
-    try:
-        raw_response = await call_llm(
-            messages=messages,
-            session_hash=session_hash,
-            tool_name="get_trend_summary",
-        )
-    except RuntimeError as e:
-        return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}
-
-    if news_focus:
-        from investorai_mcp.llm.validator import ValidationResult
-        validation = ValidationResult(passed=True, response=raw_response)
-    else:
-        extra_truths = [v for st in all_stats for v in [
-            st.start_price, st.end_price, st.high_price, st.low_price,
-            st.avg_price, abs(st.period_return_pct), st.volatility_pct,
-        ]]
-        validation = validate_response(raw_response, all_stats[0], extra_ground_truths=extra_truths)
-    citation_result = extract_citations(validation.response)
-
-    return {
-        "multi":             True,
-        "symbols":           symbols,
-        "range":             effective_range,
-        "summary":           citation_result.clean_text,
-        "citations": [
-            {"type": c.citation_type, "date": c.date}
-            for c in citation_result.db_citations
-        ] + [
-            {"type": c.citation_type, "publisher": c.publisher, "url": c.url}
-            for c in citation_result.news_citations
-        ],
-        "validation_passed": validation.passed,
-        "is_stale":          is_stale,
-    }

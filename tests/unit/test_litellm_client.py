@@ -102,7 +102,7 @@ async def test_langfuse_skipped_when_not_configured():
         mock_settings.langfuse_secret_key = None
         
         handler = _get_langfuse_handler()
-        assert handler is None
+        assert not handler
 
 async def test_call_llm_rate_limit_logged():
     import litellm as lt 

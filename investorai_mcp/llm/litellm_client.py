@@ -17,28 +17,33 @@ from investorai_mcp.config import settings
 
 logger = logging.getLogger(__name__)
 
-### Langfuse setup
+### Langfuse setup (4.x SDK — credentials from settings, not env vars)
 
-def _get_langfuse_handler():
-    """
-    Returns a langfuse callback handler if keys are configured. 
-    Returns None if langfuse is not setup - monitoring is optional. 
-    LLM can still work without langfuse. 
-    """
-    if not settings.langfuse_public_key or not settings.langfuse_private_key:
-        logger.debug("Langfuse keys not configured - skipping monitoring")
-        return None
-    
-    try: 
-        from langfuse.callback import CallbackHandler
-        return CallbackHandler(
+_langfuse = None
+
+if settings.langfuse_public_key and settings.langfuse_secret_key:
+    try:
+        from langfuse import Langfuse
+        _langfuse = Langfuse(
             public_key=settings.langfuse_public_key,
-            private_key=settings.langfuse_private_key,
+            secret_key=settings.langfuse_secret_key,
             host=settings.langfuse_host,
         )
+        logger.debug("Langfuse monitoring enabled")
     except Exception as e:
-        logger.warning("Langfuse init failed: %s", str(e))
+        logger.warning("Langfuse init failed: %s", e)
+
+
+def _get_langfuse_handler():
+    """Return the Langfuse client if configured, None otherwise."""
+    if not settings.langfuse_public_key or not settings.langfuse_secret_key:
         return None
+    return _langfuse
+
+
+def get_langfuse():
+    """Return the Langfuse client instance, or None if not configured."""
+    return _langfuse
     
 # Log to DB ----------------------------------------
 
@@ -108,52 +113,76 @@ async def call_llm(
         "api_key": settings.llm_api_key,
     }
     
-    #Add langfuse callback if configured
-    handler = _get_langfuse_handler()
-    if handler:
-        call_kwargs["callbacks"] = [handler]
-        call_kwargs["metadata"] = {
-            "session_hash": session_hash,
-            "tool_name": tool_name,
-        }
         
+    # Start Langfuse observation before the LLM call.
+    # We track wall-clock ns ourselves because LiteLLM's internal OTel spans
+    # interfere with the span's auto-recorded start/end times.
+    _obs = None
+    _start_ns: int = time.time_ns()
+    if _langfuse:
+        try:
+            _obs = _langfuse.start_observation(
+                as_type="generation",
+                name=tool_name or "llm-call",
+                model=settings.llm_model,
+                input=messages,
+                metadata={"session_hash": session_hash},
+            )
+        except Exception as lf_err:
+            logger.warning("Langfuse start_observation failed: %s", lf_err)
+
     # make the call and track timing
     start = time.monotonic()
     status = "success"
     tokens_in = 0
     tokens_out = 0
-    
+
     try:
         response = await acompletion(**call_kwargs)
-        
-        #extract token counts from response
+
         if hasattr(response, "usage") and response.usage:
             tokens_in = response.usage.prompt_tokens or 0
             tokens_out = response.usage.completion_tokens or 0
-        
+
         text = response.choices[0].message.content or ""
-        
+
         return text
-    
+
     except litellm.RateLimitError as e:
         status = "rate_limited"
         logger.warning("LLM call rate limited: %s", str(e))
         raise RuntimeError(f"LLM rate limited: {e}") from e
-    
+
     except litellm.Timeout as e:
         status = "timeout"
         logger.error("LLM call timed out: %s", str(e))
         raise RuntimeError(f"LLM call timed out: {e}") from e
-    
+
     except Exception as e:
         status = "error"
         logger.error("LLM call failed: %s", str(e))
         raise RuntimeError(f"LLM call failed: {e}") from e
-    
+
     finally:
         latency_ms = int((time.monotonic() - start) * 1000)
+        _end_ns: int = _start_ns + latency_ms * 1_000_000
+
+        # Finalise Langfuse observation with output, tokens, and status.
+        # Pass explicit end_time (ns) so LiteLLM's OTel spans don't corrupt timing.
+        if _obs:
+            try:
+                _obs.update(
+                    output=text if status == "success" else None,
+                    usage_details={"input": tokens_in, "output": tokens_out},
+                    status_message=None if status == "success" else status,
+                )
+                _obs.end(end_time=_end_ns)
+                _langfuse.flush()
+            except Exception as lf_err:
+                logger.warning("Langfuse logging failed: %s", lf_err)
+
         try:
-             await _log_usage(
+            await _log_usage(
                 session_hash=session_hash,
                 tool_name=tool_name,
                 tokens_in=tokens_in,

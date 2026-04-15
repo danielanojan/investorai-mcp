@@ -175,6 +175,29 @@ class EvalLog(Base):
     )
 
 
+class ChatRequestLog(Base):
+    """One row per /chat/stream call — tracks end-to-end server latency."""
+    __tablename__ = "chat_request_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ts: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    symbols: Mapped[str] = mapped_column(String, nullable=False)
+    range: Mapped[str] = mapped_column(String(4), nullable=False)
+    total_latency_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="success")
+
+    __table_args__ = (
+        Index("idx_chat_req_ts", "ts"),
+        Index("idx_chat_req_latency", "total_latency_ms"),
+        CheckConstraint(
+            "status IN ('success', 'error')", name="ck_chat_req_status"
+        ),
+    )
+
+
 class LLMUsageLog(Base):
     __tablename__ = "llm_usage_log"
 
