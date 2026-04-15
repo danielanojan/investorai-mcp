@@ -348,7 +348,7 @@ async def chat_stream(request: Request):
             from investorai_mcp.tools.get_trend_summary import get_trend_summary
             result = await get_trend_summary(
                 symbol,
-                range=range_,
+                range="5Y",   # chat always gets max data; question range detection narrows it
                 question=question,
                 history=history if history else None,
             )

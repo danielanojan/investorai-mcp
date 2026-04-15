@@ -9,7 +9,7 @@ export interface ChatMessage {
   error?:     boolean
 }
 
-export function useChat(symbol: string, range: TimeRange, apiKey: string | null) {
+export function useChat(symbol: string, _range: TimeRange, apiKey: string | null) {
   const [messages,  setMessages]  = useState<ChatMessage[]>([])
   const [streaming, setStreaming] = useState(false)
   const abortRef                  = useRef<AbortController | undefined>(undefined)
@@ -35,7 +35,7 @@ export function useChat(symbol: string, range: TimeRange, apiKey: string | null)
           'Content-Type':  'application/json',
           'X-LLM-API-Key': apiKey,   // key sent per-request, never stored server-side
         },
-        body:    JSON.stringify({ symbol, question, history, range }),
+        body:    JSON.stringify({ symbol, question, history }),
         signal:  abortRef.current.signal,
       })
 
@@ -135,7 +135,7 @@ export function useChat(symbol: string, range: TimeRange, apiKey: string | null)
     } finally {
       setStreaming(false)
     }
-  }, [symbol, range, messages, streaming, apiKey])
+  }, [symbol, messages, streaming, apiKey])
 
   const clearMessages = useCallback(() => {
     abortRef.current?.abort()

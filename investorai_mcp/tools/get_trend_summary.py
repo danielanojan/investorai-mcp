@@ -45,24 +45,40 @@ def _detect_range_from_question(question: str) -> str | None:
     """
     q = question.lower()
 
-    if any(w in q for w in ["5 year", "5year", "five year", "5yr"]):
+    if any(w in q for w in [
+        "5 year", "5year", "5-year", "5 years", "five year", "five years",
+        "five-year", "5yr",
+    ]):
         return "5Y"
-    if any(w in q for w in ["3 year", "3year", "three year", "3yr"]):
+    if any(w in q for w in [
+        "3 year", "3year", "3-year", "3 years", "three year", "three years",
+        "three-year", "3yr",
+    ]):
         return "3Y"
-    if any(w in q for w in ["1 year", "1year", "one year", "this year",
-                             "past year", "last year", "12 month"]):
+    if any(w in q for w in [
+        "1 year", "1year", "1-year", "1 years", "one year", "one-year",
+        "this year", "past year", "last year", "12 month",
+    ]):
         return "1Y"
-    if any(w in q for w in ["6 month", "6month", "six month",
-                             "half year", "last 6"]):
+    if any(w in q for w in [
+        "6 month", "6month", "6-month", "six month", "six months",
+        "half year", "half-year", "last 6",
+    ]):
         return "6M"
-    if any(w in q for w in ["3 month", "3month", "three month",
-                             "quarter", "last 3 month"]):
+    if any(w in q for w in [
+        "3 month", "3month", "3-month", "three month", "three months",
+        "three-month", "quarter", "last 3 month",
+    ]):
         return "3M"
-    if any(w in q for w in ["1 month", "1month", "one month",
-                             "30 day", "4 week", "5 week", "last month"]):
+    if any(w in q for w in [
+        "1 month", "1month", "1-month", "one month", "one-month",
+        "30 day", "4 week", "5 week", "last month",
+    ]):
         return "1M"
-    if any(w in q for w in ["1 week", "1week", "one week",
-                             "7 day", "this week", "last week"]):
+    if any(w in q for w in [
+        "1 week", "1week", "1-week", "one week", "one-week",
+        "7 day", "this week", "last week",
+    ]):
         return "1W"
     return None
 
@@ -109,6 +125,20 @@ def _detect_sector_from_question(question: str) -> list[str]:
             ]
             return tickers[:_SECTOR_TICKER_LIMIT]
     return []
+
+
+_ALL_STOCKS_PHRASES = [
+    "all 50", "all fifty", "all stocks", "all tickers", "all supported",
+    "entire universe", "compare all", "every stock", "every ticker",
+    "all the stocks", "full universe", "whole universe", "all of them",
+    "across all", "universe of",
+]
+
+
+def _is_all_stocks_question(question: str) -> bool:
+    """Return True if the question asks about the entire supported universe."""
+    q = question.lower()
+    return any(phrase in q for phrase in _ALL_STOCKS_PHRASES)
 
 
 def _detect_all_symbols_from_question(question: str) -> list[str]:
@@ -643,12 +673,16 @@ async def get_trend_summary(
     detected_symbols = _detect_all_symbols_from_question(question)
     sector_label: str | None = None
     if not detected_symbols:
-        q_lower = question.lower()
-        for sec, kws in _SECTOR_KEYWORDS.items():
-            if any(kw in q_lower for kw in kws):
-                sector_label = sec
-                detected_symbols = _detect_sector_from_question(question)
-                break
+        # Check for "all stocks" / "compare all" type questions first
+        if _is_all_stocks_question(question):
+            detected_symbols = list(SUPPORTED_TICKERS.keys())
+        else:
+            q_lower = question.lower()
+            for sec, kws in _SECTOR_KEYWORDS.items():
+                if any(kw in q_lower for kw in kws):
+                    sector_label = sec
+                    detected_symbols = _detect_sector_from_question(question)
+                    break
     symbols = detected_symbols if detected_symbols else [ticker_symbol.strip().upper()]
 
     # Validate every symbol up front
@@ -804,12 +838,26 @@ async def get_trend_summary(
                 "message": f"No price data available for {', '.join(symbols)}.",
             }
 
-        # Build one combined data block and a single LLM prompt
+        # Build one combined data block and a single LLM prompt.
+        # For large comparisons (>10 symbols) use a compact one-liner per stock
+        # so 50 stocks don't blow the context window.
         from investorai_mcp.llm.prompt_builder import SYSTEM_PROMPT, COT_SYSTEM_PROMPT
-        combined_data = "\n\n".join(st.to_text() for st in all_stats)
+        _name_map = {sym: info["name"] for sym, info in SUPPORTED_TICKERS.items()}
+        if len(all_stats) > 10:
+            combined_data = "\n".join(
+                f"{st.ticker_symbol} ({_name_map.get(st.ticker_symbol, st.ticker_symbol)}): "
+                f"{effective_range} return {st.period_return_pct:+.1f}%, "
+                f"start ${st.start_price:.2f} → end ${st.end_price:.2f}, "
+                f"high ${st.high_price:.2f}, low ${st.low_price:.2f}, "
+                f"vol {st.volatility_pct:.1f}%"
+                for st in all_stats
+            )
+        else:
+            combined_data = "\n\n".join(st.to_text() for st in all_stats)
 
+        # Suppress news for large comparisons — it adds noise without helping rank stocks
         news_block = ""
-        if all_news:
+        if all_news and len(all_stats) <= 10:
             headlines = [
                 f"- {a.headline} ({a.source} • {a.url})"
                 for a in all_news[:15]
