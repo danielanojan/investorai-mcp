@@ -208,7 +208,7 @@ def build_prompt(
     if news:
         headlines = [
             f"- {article.headline} ({article.source} • {article.url})"
-            for article in news[:5]
+            for article in news[:10]
         ]
         if headlines:
             news_block = "RECENT NEWS:\n" + "\n".join(headlines) + "\n"

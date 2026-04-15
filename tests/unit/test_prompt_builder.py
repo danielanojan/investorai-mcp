@@ -143,8 +143,8 @@ def test_build_prompt_news_news(sample_stats):
     assert "AAPL beats earnings" in user_content
     
 def test_build_prompt_with_history(sample_stats):
-    """Only first 5 articles should appear. """
-    news = [MagicMock() for _ in range(10)]
+    """Only first 10 articles should appear. """
+    news = [MagicMock() for _ in range(12)]
     for i, n in enumerate(news):
         n.headline = f"headline {i}"
         n.source = "Source"
@@ -152,9 +152,9 @@ def test_build_prompt_with_history(sample_stats):
 
     messages = build_prompt(sample_stats, "Any news?", news=news)
     user_content = messages[-1]["content"]
-    
-    #Headlines 0-4 should be included, 5-9 should be ignored.
-    assert "headline 4" in user_content
-    assert "headline 5" not in user_content
+
+    # Headlines 0-9 should be included, 10-11 should be ignored.
+    assert "headline 9" in user_content
+    assert "headline 10" not in user_content
         
         

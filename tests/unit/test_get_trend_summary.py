@@ -1,471 +1,532 @@
 """
-get_trend_summary MCP tool.
-
-Generates an AI narrative summary of a stock's price trend.
-Supports natural language date queries:
-- Specific dates: "price on 2021-04-22", "price on 22/04/2021"
-- Relative dates: "price 30 days ago", "last Monday", "yesterday"
-- Custom ranges: "price between Jan 2021 and Mar 2021"
-- Standard ranges: 1W, 1M, 3M, 6M, 1Y, 3Y, 5Y
-
-Auto-detects symbol and range from natural language questions.
+Tests for get_trend_summary MCP tool.
+Covers all helper functions and the main tool integration.
 """
-import hashlib
-import re
 from datetime import date, datetime, timedelta, timezone
-from typing import Literal
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from fastmcp import Context
-from sqlalchemy import select
+import pytest
 
-from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
-from investorai_mcp.db import AsyncSessionLocal
-from investorai_mcp.db.cache_manager import CacheManager
-from investorai_mcp.db.models import NewsArticle, PriceHistory
-from investorai_mcp.llm.citations import extract_citations
-from investorai_mcp.llm.history import compress_history
-from investorai_mcp.llm.litellm_client import call_llm
-from investorai_mcp.llm.prompt_builder import build_prompt, compute_stats
-from investorai_mcp.llm.validator import IDK_RESPONSE, validate_response
-from investorai_mcp.server import mcp
-from investorai_mcp.stocks import SUPPORTED_TICKERS, is_supported
-
-_adapter = YFinanceAdapter()
-
-
-# ── Range detection ───────────────────────────────────────────────────────
-
-def _detect_range_from_question(question: str) -> str | None:
-    """Detect time range from natural language. Returns None if not detected."""
-    q = question.lower()
-
-    if any(w in q for w in ["5 year", "5year", "five year", "5yr"]):
-        return "5Y"
-    if any(w in q for w in ["3 year", "3year", "three year", "3yr"]):
-        return "3Y"
-    if any(w in q for w in ["1 year", "1year", "one year", "this year",
-                             "past year", "last year", "12 month"]):
-        return "1Y"
-    if any(w in q for w in ["6 month", "6month", "six month",
-                             "half year", "last 6"]):
-        return "6M"
-    if any(w in q for w in ["3 month", "3month", "three month",
-                             "quarter", "last 3 month"]):
-        return "3M"
-    if any(w in q for w in ["1 month", "1month", "one month",
-                             "30 day", "4 week", "5 week", "last month"]):
-        return "1M"
-    if any(w in q for w in ["1 week", "1week", "one week",
-                             "7 day", "this week", "last week"]):
-        return "1W"
-    return None
+from investorai_mcp.db.cache_manager import CacheResult
+from investorai_mcp.db.models import PriceHistory
+from investorai_mcp.tools.get_trend_summary import (
+    _detect_all_symbols_from_question,
+    _detect_range_from_question,
+    _detect_sector_from_question,
+    _extract_date_context,
+    _handle_meta_question,
+    _is_news_question,
+    _range_for_date,
+    _resolve_absolute_date,
+    _resolve_date_range,
+    _resolve_relative_date,
+)
 
 
-# ── Symbol detection ──────────────────────────────────────────────────────
-
-def _detect_symbol_from_question(question: str) -> str | None:
-    """Detect ticker symbol from question text."""
-    q_upper = question.upper()
-    q_lower = question.lower()
-
-    # Check exact symbol match first
-    for symbol in SUPPORTED_TICKERS:
-        if (f" {symbol} " in f" {q_upper} " or
-                q_upper.startswith(f"{symbol} ") or
-                q_upper.endswith(f" {symbol}")):
-            return symbol
-
-    # Check company name match
-    for symbol, info in SUPPORTED_TICKERS.items():
-        name_lower = info["name"].lower()
-        first_word = name_lower.split()[0]
-        if len(first_word) > 3 and first_word in q_lower:
-            return symbol
-
-    return None
+@pytest.fixture(autouse=True)
+def register_tools():
+    from investorai_mcp.server import _register_tools
+    _register_tools()
 
 
-# ── Date resolution ───────────────────────────────────────────────────────
-
-def _resolve_relative_date(question: str) -> date | None:
-    """
-    Resolve relative date references to actual dates.
-    Handles: yesterday, N days ago, N weeks ago, last Monday etc.
-    """
-    q     = question.lower()
-    today = datetime.now(timezone.utc).date()
-
-    if "yesterday" in q:
-        return today - timedelta(days=1)
-
-    days_match = re.search(r'(\d+)\s*days?\s*ago', q)
-    if days_match:
-        return today - timedelta(days=int(days_match.group(1)))
-
-    weeks_match = re.search(r'(\d+)\s*weeks?\s*ago', q)
-    if weeks_match:
-        return today - timedelta(weeks=int(weeks_match.group(1)))
-
-    weekdays = {
-        "monday": 0, "tuesday": 1, "wednesday": 2,
-        "thursday": 3, "friday": 4, "saturday": 5, "sunday": 6
-    }
-    for day_name, day_num in weekdays.items():
-        if f"last {day_name}" in q or f"past {day_name}" in q:
-            days_back = (today.weekday() - day_num) % 7
-            if days_back == 0:
-                days_back = 7
-            return today - timedelta(days=days_back)
-
-    return None
+def make_row(d: date, price: float) -> PriceHistory:
+    row = MagicMock(spec=PriceHistory)
+    row.date      = d
+    row.adj_close = price
+    row.volume    = 50_000_000
+    return row
 
 
-def _resolve_explicit_date(question: str) -> date | None:
-    """
-    Resolve explicit date references.
-    Handles: 2021-04-22, 22/04/2021, April 22 2021, Apr 22 2021
-    """
-    # ISO format: 2021-04-22
-    iso_match = re.search(r'\b(20\d{2})-(\d{2})-(\d{2})\b', question)
-    if iso_match:
-        try:
-            return date(
-                int(iso_match.group(1)),
-                int(iso_match.group(2)),
-                int(iso_match.group(3))
-            )
-        except ValueError:
-            pass
-
-    # DD/MM/YYYY
-    slash_match = re.search(r'\b(\d{1,2})/(\d{1,2})/(20\d{2})\b', question)
-    if slash_match:
-        try:
-            return date(
-                int(slash_match.group(3)),
-                int(slash_match.group(2)),
-                int(slash_match.group(1))
-            )
-        except ValueError:
-            try:
-                return date(
-                    int(slash_match.group(3)),
-                    int(slash_match.group(1)),
-                    int(slash_match.group(2))
-                )
-            except ValueError:
-                pass
-
-    # "April 22 2021" or "Apr 22, 2021"
-    month_names = {
-        'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4,
-        'may': 5, 'jun': 6, 'jul': 7, 'aug': 8,
-        'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
-    }
-    for month_abbr, month_num in month_names.items():
-        pattern = rf'{month_abbr}\w*\s+(\d{{1,2}}),?\s+(20\d{{2}})'
-        match   = re.search(pattern, question.lower())
-        if match:
-            try:
-                return date(
-                    int(match.group(2)),
-                    month_num,
-                    int(match.group(1))
-                )
-            except ValueError:
-                pass
-
-    return None
-
-
-def _extract_date_context(question: str) -> str | None:
-    """Extract date range context for prompt enrichment."""
-    dates = re.findall(
-        r'\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2}|'
-        r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+20\d{2}|'
-        r'20\d{2})\b',
-        question.lower()
+def make_cache_result(rows, is_stale=False):
+    return CacheResult(
+        data=rows,
+        is_stale=is_stale,
+        data_age_hours=1.0,
+        provider_used="yfinance",
     )
-    if len(dates) >= 2:
-        return f"User is asking about the period from {dates[0]} to {dates[1]}."
-    if len(dates) == 1:
-        return f"User is asking about {dates[0]}."
-    return None
 
 
-# ── DB helpers ────────────────────────────────────────────────────────────
+def make_mock_session():
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__  = AsyncMock(return_value=False)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_result.scalars.return_value.all.return_value = []
+    mock_session.execute = AsyncMock(return_value=mock_result)
+    return mock_session
 
-async def _get_price_for_date(
-    session, symbol: str, target_date: date
-) -> tuple[date, float] | None:
-    """Get price for a specific date or nearest trading day (±5 days)."""
-    stmt = select(PriceHistory).where(
-        PriceHistory.symbol == symbol,
-        PriceHistory.date   == target_date,
+
+def patch_pipeline(
+    llm_response="AAPL rose 16.21% [source: DB • 2026-03-28].",
+    rows=None,
+):
+    if rows is None:
+        rows = [
+            make_row(date(2025, 4,  1), 150.0),
+            make_row(date(2026, 3, 28), 174.32),
+        ]
+    mock_session = make_mock_session()
+    mock_manager = MagicMock()
+    mock_manager.ensure_ticker_exists = AsyncMock()
+    mock_manager.get_prices = AsyncMock(return_value=make_cache_result(rows))
+    return (
+        patch("investorai_mcp.tools.get_trend_summary.AsyncSessionLocal",
+              return_value=mock_session),
+        patch("investorai_mcp.tools.get_trend_summary.CacheManager",
+              return_value=mock_manager),
+        patch("investorai_mcp.tools.get_trend_summary.call_llm",
+              new=AsyncMock(return_value=llm_response)),
     )
-    result = await session.execute(stmt)
-    row    = result.scalar_one_or_none()
-    if row:
-        return row.date, round(row.adj_close, 2)
-
-    for delta in range(1, 6):
-        for d in [target_date - timedelta(days=delta),
-                  target_date + timedelta(days=delta)]:
-            stmt = select(PriceHistory).where(
-                PriceHistory.symbol == symbol,
-                PriceHistory.date   == d,
-            )
-            result = await session.execute(stmt)
-            row    = result.scalar_one_or_none()
-            if row:
-                return row.date, round(row.adj_close, 2)
-
-    return None
 
 
-async def _get_prices_for_custom_range(
-    session, symbol: str, start: date, end: date
-) -> list[tuple[date, float]]:
-    """Get daily prices between two dates."""
-    stmt = (
-        select(PriceHistory)
-        .where(
-            PriceHistory.symbol == symbol,
-            PriceHistory.date   >= start,
-            PriceHistory.date   <= end,
+# ── _detect_range_from_question ───────────────────────────────────────────
+
+def test_range_this_year():
+    assert _detect_range_from_question("How has AAPL done this year?") == "1Y"
+
+def test_range_last_year():
+    assert _detect_range_from_question("What happened last year?") == "1Y"
+
+def test_range_6_months():
+    assert _detect_range_from_question("average over 6 months?") == "6M"
+
+def test_range_3_months():
+    assert _detect_range_from_question("last 3 months") == "3M"
+
+def test_range_1_month():
+    assert _detect_range_from_question("what happened last month?") == "1M"
+
+def test_range_1_week():
+    assert _detect_range_from_question("what happened this week?") == "1W"
+
+def test_range_5_year():
+    assert _detect_range_from_question("5 year performance") == "5Y"
+
+def test_range_3_year():
+    assert _detect_range_from_question("3 year history") == "3Y"
+
+def test_range_none():
+    assert _detect_range_from_question("how is the stock doing?") is None
+
+def test_range_quarter():
+    assert _detect_range_from_question("this quarter's performance") == "3M"
+
+
+# ── _detect_sector_from_question ──────────────────────────────────────────
+
+def test_sector_technology():
+    results = _detect_sector_from_question("how is the tech sector doing?")
+    assert len(results) > 0
+    from investorai_mcp.stocks import SUPPORTED_TICKERS
+    for sym in results:
+        assert SUPPORTED_TICKERS[sym]["sector"] == "Technology"
+
+def test_sector_finance():
+    results = _detect_sector_from_question("how are banking stocks doing?")
+    assert len(results) > 0
+
+def test_sector_healthcare():
+    results = _detect_sector_from_question("how is healthcare performing?")
+    assert len(results) > 0
+
+def test_sector_energy():
+    results = _detect_sector_from_question("how is the energy sector?")
+    assert len(results) > 0
+
+def test_sector_none():
+    results = _detect_sector_from_question("how is AAPL doing?")
+    assert results == []
+
+def test_sector_limit():
+    results = _detect_sector_from_question("how is the tech sector?")
+    assert len(results) <= 6
+
+
+# ── _detect_all_symbols_from_question ─────────────────────────────────────
+
+def test_detect_single_symbol():
+    assert "TSLA" in _detect_all_symbols_from_question("How is TSLA doing?")
+
+def test_detect_multiple_symbols():
+    result = _detect_all_symbols_from_question("Compare AAPL and MSFT")
+    assert "AAPL" in result
+    assert "MSFT" in result
+
+def test_detect_company_name_apple():
+    result = _detect_all_symbols_from_question("How is Apple performing?")
+    assert "AAPL" in result
+
+def test_detect_company_name_microsoft():
+    result = _detect_all_symbols_from_question("What about Microsoft?")
+    assert "MSFT" in result
+
+def test_detect_three_companies():
+    result = _detect_all_symbols_from_question(
+        "Compare Tesla, Apple and Microsoft"
+    )
+    assert "TSLA" in result
+    assert "AAPL" in result
+    assert "MSFT" in result
+
+def test_detect_no_symbols():
+    result = _detect_all_symbols_from_question("How is the stock doing?")
+    assert result == []
+
+def test_detect_nvidia():
+    result = _detect_all_symbols_from_question("Tell me about NVDA")
+    assert "NVDA" in result
+
+
+# ── _handle_meta_question ─────────────────────────────────────────────────
+
+def test_meta_today():
+    result = _handle_meta_question("what is today's date?")
+    assert result is not None
+    assert "Today is" in result["summary"]
+
+def test_meta_what_day():
+    result = _handle_meta_question("what day is it?")
+    assert result is not None
+
+def test_meta_supported_stocks():
+    result = _handle_meta_question("what stocks do you support?")
+    assert result is not None
+    assert "50" in result["summary"]
+
+def test_meta_sectors_covered():
+    result = _handle_meta_question("what sectors do you cover?")
+    assert result is not None
+    assert "sector" in result["summary"].lower()
+
+def test_meta_data_range():
+    result = _handle_meta_question("how far back does your data go?")
+    assert result is not None
+    assert "5 years" in result["summary"]
+
+def test_meta_none_for_stock_question():
+    result = _handle_meta_question("How is AAPL doing?")
+    assert result is None
+
+def test_meta_validation_always_passed():
+    result = _handle_meta_question("what stocks do you support?")
+    assert result["validation_passed"] is True
+
+
+# ── _is_news_question ─────────────────────────────────────────────────────
+
+def test_is_news_question_news():
+    assert _is_news_question("what is the latest news on AAPL?") is True
+
+def test_is_news_question_headline():
+    assert _is_news_question("show me headlines for TSLA") is True
+
+def test_is_news_question_announcement():
+    assert _is_news_question("any announcements from Apple?") is True
+
+def test_is_not_news_question():
+    assert _is_news_question("how has AAPL performed this year?") is False
+
+def test_is_not_news_price_question():
+    assert _is_news_question("what was the price last Monday?") is False
+
+
+# ── _resolve_relative_date ────────────────────────────────────────────────
+
+def test_relative_yesterday():
+    result   = _resolve_relative_date("what was the price yesterday?")
+    expected = datetime.now(timezone.utc).date() - timedelta(days=1)
+    assert result == expected
+
+def test_relative_last_monday():
+    result = _resolve_relative_date("price last Monday")
+    assert result is not None
+    assert result.weekday() == 0
+
+def test_relative_last_wednesday():
+    result = _resolve_relative_date("price last Wednesday")
+    assert result is not None
+    assert result.weekday() == 2
+
+def test_relative_last_friday():
+    result = _resolve_relative_date("price last Friday")
+    assert result is not None
+    assert result.weekday() == 4
+
+def test_relative_last_wed_abbr():
+    result = _resolve_relative_date("price last Wed")
+    assert result is not None
+    assert result.weekday() == 2
+
+def test_relative_today():
+    result   = _resolve_relative_date("what is the price today?")
+    expected = datetime.now(timezone.utc).date()
+    assert result == expected
+
+def test_relative_none():
+    assert _resolve_relative_date("how is AAPL doing?") is None
+
+def test_relative_last_monday_is_past():
+    result = _resolve_relative_date("price last Monday")
+    today  = datetime.now(timezone.utc).date()
+    assert result < today
+
+
+# ── _resolve_absolute_date ────────────────────────────────────────────────
+
+def test_absolute_iso_format():
+    result = _resolve_absolute_date("price on 2021-04-22")
+    assert result == date(2021, 4, 22)
+
+
+def test_absolute_month_name():
+    result = _resolve_absolute_date("price on April 22 2021")
+    assert result == date(2021, 4, 22)
+
+def test_absolute_month_abbr():
+    result = _resolve_absolute_date("price on Apr 22 2021")
+    assert result == date(2021, 4, 22)
+
+def test_absolute_month_with_comma():
+    result = _resolve_absolute_date("price on May 12, 2020")
+    assert result == date(2020, 5, 12)
+
+def test_absolute_none():
+    assert _resolve_absolute_date("how is AAPL doing?") is None
+
+
+# ── _resolve_date_range ───────────────────────────────────────────────────
+
+def test_date_range_month_year():
+    result = _resolve_date_range("from May 2023 to May 2025")
+    assert result is not None
+    start, end = result
+    assert start.year == 2023
+    assert end.year   == 2025
+
+def test_date_range_iso():
+    result = _resolve_date_range("from 2023-05-01 to 2025-05-31")
+    assert result is not None
+    start, end = result
+    assert start == date(2023, 5, 1)
+    assert end   == date(2025, 5, 31)
+
+def test_date_range_with_dash():
+    result = _resolve_date_range("Jan 2024 - Dec 2024")
+    assert result is not None
+    start, end = result
+    assert start.year == 2024
+    assert end.year   == 2024
+
+def test_date_range_between():
+    result = _resolve_date_range("between Jan 2023 and Mar 2023")
+    assert result is not None
+
+def test_date_range_none():
+    assert _resolve_date_range("how is AAPL doing?") is None
+
+def test_date_range_start_before_end():
+    result = _resolve_date_range("from May 2023 to May 2025")
+    assert result is not None
+    start, end = result
+    assert start < end
+
+
+# ── _range_for_date ───────────────────────────────────────────────────────
+
+def test_range_for_date_1w():
+    target = datetime.now(timezone.utc).date() - timedelta(days=3)
+    assert _range_for_date(target) == "1W"
+
+def test_range_for_date_1m():
+    target = datetime.now(timezone.utc).date() - timedelta(days=20)
+    assert _range_for_date(target) == "1M"
+
+def test_range_for_date_3m():
+    target = datetime.now(timezone.utc).date() - timedelta(days=60)
+    assert _range_for_date(target) == "3M"
+
+def test_range_for_date_6m():
+    target = datetime.now(timezone.utc).date() - timedelta(days=150)
+    assert _range_for_date(target) == "6M"
+
+def test_range_for_date_1y():
+    target = datetime.now(timezone.utc).date() - timedelta(days=300)
+    assert _range_for_date(target) == "1Y"
+
+def test_range_for_date_3y():
+    target = datetime.now(timezone.utc).date() - timedelta(days=700)
+    assert _range_for_date(target) == "3Y"
+
+def test_range_for_date_5y():
+    target = datetime.now(timezone.utc).date() - timedelta(days=1500)
+    assert _range_for_date(target) == "5Y"
+
+
+# ── _extract_date_context ─────────────────────────────────────────────────
+
+def test_extract_two_dates():
+    result = _extract_date_context("between Jan 2025 and Mar 2025")
+    assert result is not None
+    assert "jan" in result.lower()
+
+def test_extract_one_date():
+    result = _extract_date_context("what happened in 2025?")
+    assert result is not None
+
+def test_extract_none():
+    assert _extract_date_context("how is AAPL doing?") is None
+
+
+# ── get_trend_summary tool ────────────────────────────────────────────────
+
+async def test_unsupported_ticker_returns_error():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    result = await get_trend_summary("FAKECORP")
+    assert result["error"] is True
+    assert result["code"] == "TICKER_NOT_SUPPORTED"
+
+
+async def test_meta_question_no_llm_call():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    with patch("investorai_mcp.tools.get_trend_summary.call_llm") as mock_llm:
+        result = await get_trend_summary(
+            "AAPL",
+            question="what stocks do you support?"
         )
-        .order_by(PriceHistory.date.asc())
+    mock_llm.assert_not_called()
+    assert "summary" in result
+
+
+async def test_returns_summary_text():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline()
+    with p1, p2, p3:
+        result = await get_trend_summary("AAPL")
+    assert "summary" in result
+    assert isinstance(result["summary"], str)
+
+
+async def test_returns_stats_block():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline()
+    with p1, p2, p3:
+        result = await get_trend_summary("AAPL")
+    for field in ["start_price", "end_price", "period_return_pct",
+                  "high_price", "low_price", "trading_days"]:
+        assert field in result["stats"], f"Missing: {field}"
+
+
+async def test_returns_citations():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline("AAPL rose [source: DB • 2026-03-28].")
+    with p1, p2, p3:
+        result = await get_trend_summary("AAPL")
+    assert isinstance(result["citations"], list)
+
+
+async def test_validation_passed_present():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline()
+    with p1, p2, p3:
+        result = await get_trend_summary("AAPL")
+    assert "validation_passed" in result
+
+
+async def test_llm_unavailable_returns_error():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    mock_session = make_mock_session()
+    mock_manager = MagicMock()
+    mock_manager.ensure_ticker_exists = AsyncMock()
+    mock_manager.get_prices = AsyncMock(
+        return_value=make_cache_result([
+            make_row(date(2025, 4, 1), 150.0),
+            make_row(date(2026, 3, 28), 174.32),
+        ])
     )
-    result = await session.execute(stmt)
-    rows   = result.scalars().all()
-    return [(r.date, round(r.adj_close, 2)) for r in rows]
+    with patch("investorai_mcp.tools.get_trend_summary.AsyncSessionLocal",
+               return_value=mock_session), \
+         patch("investorai_mcp.tools.get_trend_summary.CacheManager",
+               return_value=mock_manager), \
+         patch("investorai_mcp.tools.get_trend_summary.call_llm",
+               new=AsyncMock(side_effect=RuntimeError("no key"))):
+        result = await get_trend_summary("AAPL")
+    assert result["error"] is True
+    assert result["code"]  == "LLM_UNAVAILABLE"
 
 
-# ── Main tool ─────────────────────────────────────────────────────────────
-
-@mcp.tool()
-async def get_trend_summary(
-    ticker_symbol: str,
-    range: Literal["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"] = "1Y",
-    question: str = "Summarise this stock's recent performance.",
-    history: list[dict] | None = None,
-    ctx: Context | None = None,
-) -> dict:
-    """Generate an AI narrative summary of a stock's price trend.
-
-    Supports natural language queries about any date or date range
-    within the last 5 years. Auto-detects the stock symbol and time
-    range from the question text.
-
-    Examples:
-    - "What was Tesla's price on 2021-04-22?"
-    - "What was AAPL price 30 days ago?"
-    - "What was Microsoft price last Monday?"
-    - "How did NVDA perform between Jan 2025 and Mar 2025?"
-    - "How has Apple performed this year?"
-
-    Args:
-        ticker_symbol: Default ticker if none detected in question.
-        range:         Default range if none detected in question.
-        question:      Natural language question from the user.
-        history:       Optional compressed chat history.
-
-    Returns:
-        Dict with AI summary, citations, validation status, stats.
-    """
-    # Detect effective symbol and range
-    detected_symbol  = _detect_symbol_from_question(question)
-    effective_symbol = (
-        detected_symbol if detected_symbol
-        else ticker_symbol.strip().upper()
+async def test_empty_data_returns_error():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    mock_session = make_mock_session()
+    mock_manager = MagicMock()
+    mock_manager.ensure_ticker_exists = AsyncMock()
+    mock_manager.get_prices = AsyncMock(
+        return_value=make_cache_result([])
     )
+    with patch("investorai_mcp.tools.get_trend_summary.AsyncSessionLocal",
+               return_value=mock_session), \
+         patch("investorai_mcp.tools.get_trend_summary.CacheManager",
+               return_value=mock_manager):
+        result = await get_trend_summary("AAPL")
+    assert result["error"] is True
 
-    if not is_supported(effective_symbol):
-        return {
-            "error":   True,
-            "code":    "TICKER_NOT_SUPPORTED",
-            "message": f"{effective_symbol} is not in the InvestorAI supported universe.",
-            "hint":    "Use search_ticker to find supported stocks.",
-        }
 
-    detected_range  = _detect_range_from_question(question)
-    effective_range = detected_range if detected_range else range
-
-    # Expand to 5Y if question mentions a past year
-    past_years = re.findall(r'\b(202[0-4])\b', question)
-    if past_years:
-        effective_range = "5Y"
-
-    session_hash = hashlib.sha256(
-        f"{effective_symbol}{datetime.now(timezone.utc).date()}".encode()
-    ).hexdigest()[:16]
-
-    # Resolve specific or relative dates
-    specific_date = _resolve_explicit_date(question)
-    relative_date = _resolve_relative_date(question)
-    target_date   = specific_date or relative_date
-
-    # Detect custom date range (two explicit dates in question)
-    date_matches = re.findall(
-        r'\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2}|'
-        r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+20\d{2})\b',
-        question.lower()
+async def test_specific_date_fast_path():
+    """Specific date lookup returns DB price directly without LLM."""
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    target = date(2026, 3, 28)
+    rows   = [make_row(target, 174.32)]
+    mock_session = make_mock_session()
+    mock_manager = MagicMock()
+    mock_manager.ensure_ticker_exists = AsyncMock()
+    mock_manager.get_prices = AsyncMock(
+        return_value=make_cache_result(rows)
     )
-    has_custom_range = len(date_matches) >= 2
-
-    price_data_block = ""
-
-    async with AsyncSessionLocal() as session:
-        manager = CacheManager(session, _adapter)
-        await manager.ensure_ticker_exists(effective_symbol)
-        cache_result = await manager.get_prices(effective_symbol, effective_range)
-
-        # Specific date lookup
-        if target_date and not has_custom_range:
-            price_result = await _get_price_for_date(
-                session, effective_symbol, target_date
-            )
-            if price_result:
-                actual_date, price = price_result
-                price_data_block = (
-                    f"\nSPECIFIC DATE PRICE DATA:\n"
-                    f"- {effective_symbol} on {actual_date}: ${price:.2f}\n"
-                    f"  (nearest trading day to {target_date})\n"
-                )
-            else:
-                price_data_block = (
-                    f"\nSPECIFIC DATE PRICE DATA:\n"
-                    f"- No data found for {effective_symbol} around {target_date}\n"
-                    f"  (data may not go back that far — oldest data is 5 years)\n"
-                )
-
-        # Custom date range
-        elif has_custom_range:
-            try:
-                from dateutil import parser as dateparser
-                start_date   = dateparser.parse(date_matches[0]).date()
-                end_date     = dateparser.parse(date_matches[1]).date()
-                range_prices = await _get_prices_for_custom_range(
-                    session, effective_symbol, start_date, end_date
-                )
-                if range_prices:
-                    step    = max(1, len(range_prices) // 20)
-                    sampled = range_prices[::step]
-                    rows_text = "\n".join(
-                        f"  {d}: ${p:.2f}" for d, p in sampled
-                    )
-                    start_p = range_prices[0][1]
-                    end_p   = range_prices[-1][1]
-                    ret_pct = round((end_p - start_p) / start_p * 100, 2)
-                    price_data_block = (
-                        f"\nCUSTOM RANGE DATA ({start_date} to {end_date}):\n"
-                        f"- Start: ${start_p:.2f}\n"
-                        f"- End:   ${end_p:.2f}\n"
-                        f"- Return: {ret_pct:+.2f}%\n"
-                        f"- Sample prices:\n{rows_text}\n"
-                    )
-                else:
-                    price_data_block = (
-                        f"\nCUSTOM RANGE DATA:\n"
-                        f"- No data found between {start_date} and {end_date}\n"
-                    )
-            except Exception:
-                pass
-
-        # Fetch news
-        news_stmt   = (
-            select(NewsArticle)
-            .where(NewsArticle.symbol == effective_symbol)
-            .order_by(NewsArticle.published_at.desc())
-            .limit(5)
+    with patch("investorai_mcp.tools.get_trend_summary.AsyncSessionLocal",
+               return_value=mock_session), \
+         patch("investorai_mcp.tools.get_trend_summary.CacheManager",
+               return_value=mock_manager), \
+         patch("investorai_mcp.tools.get_trend_summary.call_llm") as mock_llm:
+        result = await get_trend_summary(
+            "AAPL",
+            question=f"What was the price on 2026-03-28?"
         )
-        news_result = await session.execute(news_stmt)
-        recent_news = list(news_result.scalars().all())
+    assert "174.32" in result["summary"]
+    mock_llm.assert_not_called()
 
-    if not cache_result.data:
-        return {
-            "error":   True,
-            "code":    "DATA_UNAVAILABLE",
-            "message": f"No price data available for {effective_symbol}.",
-        }
 
-    stats = compute_stats(effective_symbol, effective_range, cache_result.data)
-    if stats is None:
-        return {
-            "error":   True,
-            "code":    "DATA_UNAVAILABLE",
-            "message": f"Could not compute statistics for {effective_symbol}.",
-        }
-
-    # Compress history
-    compressed_history = None
-    if history:
-        compressed_history = await compress_history(
-            history, session_hash=session_hash
-        )
-
-    # Enrich question with date context
-    date_context   = _extract_date_context(question)
-    final_question = question
-    if date_context:
-        final_question = f"{question}\nContext: {date_context}"
-
-    # Build prompt
-    messages = build_prompt(
-        stats=stats,
-        question=final_question,
-        news=recent_news if recent_news else None,
-        history=compressed_history,
+async def test_news_question_skips_number_validation():
+    """News questions bypass the number validator."""
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline(
+        llm_response="Apple announced a new product. Revenue was $999B."
     )
-
-    # Inject specific price data block into user message
-    if price_data_block:
-        last_msg    = messages[-1]
-        messages[-1] = {
-            **last_msg,
-            "content": last_msg["content"] + price_data_block,
-        }
-
-    # Call LLM
-    try:
-        raw_response = await call_llm(
-            messages=messages,
-            session_hash=session_hash,
-            tool_name="get_trend_summary",
+    with p1, p2, p3:
+        result = await get_trend_summary(
+            "AAPL",
+            question="What is the latest news on Apple?"
         )
-    except RuntimeError as e:
-        return {
-            "error":   True,
-            "code":    "LLM_UNAVAILABLE",
-            "message": str(e),
-        }
+    assert result.get("validation_passed") is True
 
-    # Validate and extract citations
-    validation      = validate_response(raw_response, stats)
-    citation_result = extract_citations(validation.response)
 
-    return {
-        "symbol":            effective_symbol,
-        "range":             effective_range,
-        "question_symbol":   detected_symbol,
-        "summary":           citation_result.clean_text,
-        "citations": [
-            {"type": c.citation_type, "date": c.date}
-            for c in citation_result.db_citations
-        ] + [
-            {"type": c.citation_type, "publisher": c.publisher, "url": c.url}
-            for c in citation_result.news_citations
-        ],
-        "validation_passed": validation.passed,
-        "is_stale":          cache_result.is_stale,
-        "data_age_hours":    round(cache_result.data_age_hours, 2),
-        "stats": {
-            "start_price":       stats.start_price,
-            "end_price":         stats.end_price,
-            "period_return_pct": stats.period_return_pct,
-            "high_price":        stats.high_price,
-            "low_price":         stats.low_price,
-            "volatility_pct":    stats.volatility_pct,
-            "trading_days":      stats.trading_days,
-        },
-    }
+async def test_symbol_detected_from_question():
+    """AAPL loaded but user asks about TSLA — TSLA should be fetched."""
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline(llm_response="TSLA performed well.")
+    with p1, p2, p3:
+        result = await get_trend_summary(
+            "AAPL",
+            question="How is TSLA doing?"
+        )
+    assert result["symbol"] == "TSLA"
+
+
+async def test_6_month_question_uses_6m_range():
+    from investorai_mcp.tools.get_trend_summary import get_trend_summary
+    p1, p2, p3 = patch_pipeline()
+    with p1, p2, p3:
+        result = await get_trend_summary(
+            "AAPL",
+            question="What is the average price over 6 months?"
+        )
+    assert result["range"] == "6M"

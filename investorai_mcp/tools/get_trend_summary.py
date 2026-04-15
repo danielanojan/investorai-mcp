@@ -531,7 +531,7 @@ async def _analyse_one_symbol(
             select(NewsArticle)
             .where(NewsArticle.symbol == symbol)
             .order_by(NewsArticle.published_at.desc())
-            .limit(5)
+            .limit(10)
         )
         news_result = await news_session.execute(stmt)
         recent_news = list(news_result.scalars().all())
@@ -712,7 +712,7 @@ async def get_trend_summary(
                 select(NewsArticle)
                 .where(NewsArticle.symbol == sym)
                 .order_by(NewsArticle.published_at.desc())
-                .limit(3)
+                .limit(6)
             )
             news = list(news_result.scalars().all())
         return sym, cr, news
@@ -790,7 +790,7 @@ async def get_trend_summary(
     if all_news:
         headlines = [
             f"- {a.headline} ({a.source} • {a.url})"
-            for a in all_news[:6]
+            for a in all_news[:15]
         ]
         news_block = "\nRECENT NEWS:\n" + "\n".join(headlines) + "\n"
 
