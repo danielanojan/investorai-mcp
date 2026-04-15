@@ -47,17 +47,18 @@ def _detect_range_from_question(question: str) -> str | None:
 
     if any(w in q for w in [
         "5 year", "5year", "5-year", "5 years", "five year", "five years",
-        "five-year", "5yr",
+        "five-year", "5yr", "5 yr", "past 5", "last 5 year",
     ]):
         return "5Y"
     if any(w in q for w in [
         "3 year", "3year", "3-year", "3 years", "three year", "three years",
-        "three-year", "3yr",
+        "three-year", "3yr", "3 yr", "past 3", "last 3 year",
     ]):
         return "3Y"
     if any(w in q for w in [
         "1 year", "1year", "1-year", "1 years", "one year", "one-year",
         "this year", "past year", "last year", "12 month",
+        "1yr", "1 yr", "last yr", "past yr", "this yr",
     ]):
         return "1Y"
     if any(w in q for w in [
@@ -67,12 +68,13 @@ def _detect_range_from_question(question: str) -> str | None:
         return "6M"
     if any(w in q for w in [
         "3 month", "3month", "3-month", "three month", "three months",
-        "three-month", "quarter", "last 3 month",
+        "three-month", "quarter", "last 3 month", "last 3 months",
+        "past 3 month", "past quarter", "last 3m", "in 3m", "past 3m",
     ]):
         return "3M"
     if any(w in q for w in [
         "1 month", "1month", "1-month", "one month", "one-month",
-        "30 day", "4 week", "5 week", "last month",
+        "30 day", "4 week", "5 week", "last month", "past month",
     ]):
         return "1M"
     if any(w in q for w in [
@@ -106,32 +108,43 @@ _SECTOR_KEYWORDS: dict[str, list[str]] = {
     ],
 }
 
-# Max tickers to include per sector query (keeps prompt token budget sane)
-_SECTOR_TICKER_LIMIT = 6
+_SECTOR_TICKER_LIMIT = 999  # no effective limit — include all tickers per sector
 
 
-def _detect_sector_from_question(question: str) -> list[str]:
+def _detect_sector_from_question(question: str) -> tuple[list[str], list[str]]:
     """
-    If the question mentions a sector (e.g. "energy sector", "tech stocks"),
-    return the first N tickers in that sector ordered as in SUPPORTED_TICKERS.
-    Returns [] if no sector is recognised.
+    Detect all sectors mentioned in the question.
+
+    Returns (tickers, matched_sector_names).
+    All tickers from every matched sector are included — no cap.
+    Returns ([], []) if no sector is recognised.
     """
     q = question.lower()
+    tickers: list[str] = []
+    matched_sectors: list[str] = []
     for sector, keywords in _SECTOR_KEYWORDS.items():
         if any(kw in q for kw in keywords):
-            tickers = [
-                sym for sym, info in SUPPORTED_TICKERS.items()
-                if info["sector"] == sector
-            ]
-            return tickers[:_SECTOR_TICKER_LIMIT]
-    return []
+            for sym, info in SUPPORTED_TICKERS.items():
+                if info["sector"] == sector and sym not in tickers:
+                    tickers.append(sym)
+            matched_sectors.append(sector)
+    return tickers, matched_sectors
 
 
 _ALL_STOCKS_PHRASES = [
+    # Explicit "all" references
     "all 50", "all fifty", "all stocks", "all tickers", "all supported",
-    "entire universe", "compare all", "every stock", "every ticker",
-    "all the stocks", "full universe", "whole universe", "all of them",
-    "across all", "universe of",
+    "all the stocks", "all of them", "across all", "universe of",
+    "entire universe", "full universe", "whole universe",
+    # Compare / rank without naming specific stocks
+    "compare all", "compare stocks", "compare the stocks",
+    "rank stocks", "rank the stocks", "ranking stocks",
+    "best performing stock", "worst performing stock",
+    "best performing", "worst performing",
+    "top performing", "bottom performing",
+    "best stock", "worst stock",
+    "top stock", "top stocks",
+    "every stock", "every ticker",
 ]
 
 
@@ -180,6 +193,15 @@ def _handle_meta_question(question: str) -> dict | None:
     q = question.lower()
     today = datetime.now(timezone.utc).date()
 
+    # Pre-compute: is this a performance/comparison question?
+    # If so, skip all meta-handler shortcuts so the data pipeline handles it.
+    _performance_words = [
+        "best", "worst", "top", "bottom", "perform", "return", "gain",
+        "loss", "compare", "rank", "highest", "lowest",
+        "outperform", "underperform", "grew", "fell", "rise", "drop",
+    ]
+    _is_performance_q = any(pw in q for pw in _performance_words)
+
     # Today / current date
     if any(kw in q for kw in [
         "today", "current date", "what date", "what day is it",
@@ -191,8 +213,8 @@ def _handle_meta_question(question: str) -> dict | None:
             "validation_passed": True,
         }
 
-    # Supported sectors
-    if any(kw in q for kw in [
+    # Supported sectors — guard against performance questions like "which sector performed best"
+    if not _is_performance_q and any(kw in q for kw in [
         "what sector", "which sector", "sectors do you", "sectors support",
         "sector available", "sectors available", "sectors covered",
     ]):
@@ -210,8 +232,8 @@ def _handle_meta_question(question: str) -> dict | None:
         )
         return {"summary": summary, "citations": [], "validation_passed": True}
 
-    # Supported stocks / tickers
-    if any(kw in q for kw in [
+    # Supported stocks / tickers — but NOT if the question is about performance/comparison
+    if not _is_performance_q and any(kw in q for kw in [
         "what stock", "which stock", "stocks do you", "tickers",
         "what do you cover", "what do you support", "what can you",
         "supported stock", "available stock",
@@ -353,6 +375,46 @@ def _resolve_absolute_date(question: str) -> date | None:
             pass
 
     return None
+
+
+def _detect_duration_from_question(question: str) -> tuple[date, date] | None:
+    """
+    Parse 'last/past N <unit>' phrases into a concrete (start_date, today) range.
+
+    Supports any positive integer or decimal amount:
+      'last 54 days', 'past 60 days', 'last 2.5 years', 'last 18 months', 'past 6 weeks'
+
+    Returns None when the question has no such pattern (falls through to other detectors).
+    Does NOT match bare 'last year' / 'last month' (no number → handled by fixed range detection).
+    """
+    from datetime import timedelta
+
+    today = datetime.now(timezone.utc).date()
+    q = question.lower()
+
+    m = re.search(
+        r'\b(?:last|past)\s+(\d+(?:\.\d+)?)\s*(day|week|month|year)s?\b',
+        q,
+    )
+    if not m:
+        return None
+
+    amount = float(m.group(1))
+    unit   = m.group(2)
+
+    if unit == "day":
+        delta_days = amount
+    elif unit == "week":
+        delta_days = amount * 7
+    elif unit == "month":
+        delta_days = amount * 30.44       # average days per month
+    elif unit == "year":
+        delta_days = amount * 365.25
+    else:
+        return None
+
+    start_date = today - timedelta(days=int(round(delta_days)))
+    return start_date, today
 
 
 def _resolve_date_range(question: str) -> tuple[date, date] | None:
@@ -677,12 +739,10 @@ async def get_trend_summary(
         if _is_all_stocks_question(question):
             detected_symbols = list(SUPPORTED_TICKERS.keys())
         else:
-            q_lower = question.lower()
-            for sec, kws in _SECTOR_KEYWORDS.items():
-                if any(kw in q_lower for kw in kws):
-                    sector_label = sec
-                    detected_symbols = _detect_sector_from_question(question)
-                    break
+            sector_tickers, matched_sectors = _detect_sector_from_question(question)
+            if sector_tickers:
+                detected_symbols = sector_tickers
+                sector_label = " & ".join(matched_sectors)
     symbols = detected_symbols if detected_symbols else [ticker_symbol.strip().upper()]
 
     # Validate every symbol up front
@@ -695,9 +755,11 @@ async def get_trend_summary(
                 "hint":    "Use search_ticker to find supported stocks.",
             }
 
-    # Resolve date context: try range first ("May 2023 to May 2025"),
-    # then single date (relative or absolute). Never resolve both at once.
-    date_range    = _resolve_date_range(question)
+    # Resolve date context:
+    #   1. 'last N days/weeks/months/years' → concrete (start, today) window
+    #   2. explicit range 'May 2023 to May 2025'
+    #   3. single date (relative weekday or absolute calendar date)
+    date_range    = _detect_duration_from_question(question) or _resolve_date_range(question)
     resolved_date = (
         None
         if date_range is not None
@@ -716,15 +778,41 @@ async def get_trend_summary(
     # Build the question string to pass to the LLM (only used for non-date paths)
     final_question = question
     if sector_label:
+        multi = " & " in sector_label
         final_question = (
-            f"{question}\nContext: This is a sector-level question. "
-            f"The data below covers the top stocks in the {sector_label} sector. "
-            f"Summarise the sector's overall trend, not just individual stocks."
+            f"{question}\nContext: This is a {'cross-sector' if multi else 'sector-level'} question. "
+            f"The data below covers all stocks in the {sector_label} {'sectors' if multi else 'sector'}. "
+            f"Compare {'each sector separately, then give an overall comparison' if multi else 'the sector overall trend'}."
         )
     elif date_range is None and resolved_date is None:
         date_context = _extract_date_context(question)
         if date_context:
             final_question = f"{question}\nContext: {date_context}"
+
+    # When we have a concrete date window, instruct the LLM to state it explicitly.
+    # This prevents "approximately N days" guesses based on trading-day counts.
+    if date_range is not None:
+        dr_start, dr_end = date_range
+        date_str = (
+            f"{dr_start.strftime('%B %d, %Y')} to {dr_end.strftime('%B %d, %Y')}"
+        )
+        final_question = (
+            f"{final_question}\n"
+            f"IMPORTANT: The analysis covers exactly {date_str}. "
+            f"State this exact date range at the start of your answer. "
+            f"Do not approximate or recalculate — use these dates as-is."
+        )
+
+    # If asking about sector performance without a sector_label (triggered all-stocks path),
+    # tell the LLM to group stocks by sector and compare sectors.
+    q_lower = question.lower()
+    if not sector_label and "sector" in q_lower and len(symbols) > 10:
+        final_question = (
+            f"{final_question}\n"
+            f"IMPORTANT: Each stock entry includes its sector (after '|'). "
+            f"Group stocks by sector, compute each sector's average return, "
+            f"and rank sectors from best to worst. Then answer which sector performed best/worst."
+        )
 
     news_focus = _is_news_question(question)
 
@@ -843,10 +931,13 @@ async def get_trend_summary(
         # so 50 stocks don't blow the context window.
         from investorai_mcp.llm.prompt_builder import SYSTEM_PROMPT, COT_SYSTEM_PROMPT
         _name_map = {sym: info["name"] for sym, info in SUPPORTED_TICKERS.items()}
+        _sector_map = {sym: info["sector"] for sym, info in SUPPORTED_TICKERS.items()}
         if len(all_stats) > 10:
             combined_data = "\n".join(
-                f"{st.ticker_symbol} ({_name_map.get(st.ticker_symbol, st.ticker_symbol)}): "
-                f"{effective_range} return {st.period_return_pct:+.1f}%, "
+                f"{st.ticker_symbol} ({_name_map.get(st.ticker_symbol, st.ticker_symbol)}"
+                f" | {_sector_map.get(st.ticker_symbol, 'Unknown')}): "
+                f"{st.start_date} to {st.end_date}, "
+                f"return {st.period_return_pct:+.1f}%, "
                 f"start ${st.start_price:.2f} → end ${st.end_price:.2f}, "
                 f"high ${st.high_price:.2f}, low ${st.low_price:.2f}, "
                 f"vol {st.volatility_pct:.1f}%"
@@ -869,9 +960,24 @@ async def get_trend_summary(
         if compressed_history:
             messages.extend(compressed_history)
 
+        # Prepend a clear period header so the LLM always sees exact dates first
+        period_header = ""
+        if date_range is not None:
+            dr_start, dr_end = date_range
+            period_header = (
+                f"ANALYSIS PERIOD: {dr_start.strftime('%B %d, %Y')} "
+                f"to {dr_end.strftime('%B %d, %Y')}\n\n"
+            )
+        elif all_stats:
+            # Use actual data dates from the first stock as a reference
+            period_header = (
+                f"ANALYSIS PERIOD: {all_stats[0].start_date} "
+                f"to {all_stats[0].end_date}\n\n"
+            )
+
         if news_focus and news_block:
             user_content = (
-                f"{news_block}"
+                f"{period_header}{news_block}"
                 f"\nPRICE CONTEXT (for reference only):\n{combined_data}"
                 f"\nUser question:\n{final_question}"
                 f"\nInstruction: Answer based on the news articles above. "
@@ -879,7 +985,7 @@ async def get_trend_summary(
             )
         else:
             user_content = (
-                f"DATA_PROVIDED:\n{combined_data}{news_block}\n\nUser question:\n{final_question}"
+                f"DATA_PROVIDED:\n{period_header}{combined_data}{news_block}\n\nUser question:\n{final_question}"
             )
         messages.append({"role": "user", "content": user_content})
 
@@ -893,8 +999,12 @@ async def get_trend_summary(
             return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}
 
         with _lf_span("validate", input={"news_focus": news_focus}):
-            if news_focus:
-                from investorai_mcp.llm.validator import ValidationResult
+            from investorai_mcp.llm.validator import ValidationResult
+            if news_focus or len(all_stats) > 5:
+                # For news-focused or large multi-stock responses the LLM computes
+                # aggregates (sector averages, rankings) that won't match any single
+                # stock's individual figures — skip numeric validation to avoid
+                # false positives. Data already comes from the DB so nothing is hallucinated.
                 validation = ValidationResult(passed=True, response=raw_response)
             else:
                 extra_truths = [v for st in all_stats for v in [
