@@ -1,0 +1,12 @@
+[build]
+builder = "dockerfile"
+
+[deploy]
+startCommand = "uv run investorai-mcp"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services]]
+name = "investorai-mcp"

@@ -2,7 +2,6 @@
 name = "investorai-mcp"
 version = "0.1.0"
 description = "AI-native stock research MCP server for retail investors"
-readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
 

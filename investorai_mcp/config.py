@@ -1,6 +1,6 @@
 from typing import Literal
 
-
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #here the env is loaded and validated.
@@ -11,9 +11,6 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
-    
-    ############## Database
-    database_url: str = "sqlite+aiosqlite:///./investorai.db"
     
     ############## Data provider
     data_provider : Literal["yfinance", "alpha_vantage", "polygon"] = "yfinance"
@@ -51,5 +48,15 @@ class Settings(BaseSettings):
     log_level : Literal["DEBUG", "INFO", "WaRNING", "ERROR"] = "INFO"
     log_format : Literal["json", "text"] = "text"
     
+    # ── Database ───────────────────────────────────────────────────────────────
+    # Railway sets DATABASE_URL automatically for PostgreSQL addon
+    database_url: str = Field(
+    default="sqlite+aiosqlite:///./investorai.db",
+    validation_alias=AliasChoices("DATABASE_URL", "database_url"),
+    )
 
+    # ── Server ─────────────────────────────────────────────────────────────────
+    port: int = Field(default=8000, validation_alias=AliasChoices("PORT", "port"))
+    host: str = "0.0.0.0"
+    
 settings = Settings()

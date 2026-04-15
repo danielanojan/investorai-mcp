@@ -92,55 +92,73 @@ async def _start_mcp_http() -> None:
 
 
 def create_app():
-    """
-    Create and configure FastAPI application.
-    """
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    from slowapi import _rate_limit_exceeded_handler    
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
     from slowapi.errors import RateLimitExceeded
     from slowapi.middleware import SlowAPIMiddleware
-    
+    from pathlib import Path
+
     from investorai_mcp.api.error_handler import rate_limit_handler
     from investorai_mcp.api.rate_limit import limiter
     from investorai_mcp.api.router import router
-    
-    app = FastAPI(title="InvestorAI BFF", 
-                  description="Backend for frontend - REST API for the InvestorAI Web UI",
-                  version="0.1.0")
-    
-    #CORS - allow React dev server
+
+    app = FastAPI(
+        title="InvestorAI BFF",
+        version="0.1.0",
+    )
+
+    # CORS — allow React dev server in development
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://localhost:3000"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
-    #Rate limiting
+
+    # Rate limiting
     app.state.limiter = limiter
     app.add_middleware(SlowAPIMiddleware)
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
-    
+
+    # API routes
     app.include_router(router)
+
+    # Serve React build in production
+    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+    if frontend_dist.exists():
+        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+
+        @app.get("/{full_path:path}")
+        async def serve_spa(full_path: str):
+            # API routes are handled above — this catches everything else
+            index = frontend_dist / "index.html"
+            return FileResponse(str(index))
+
     return app
     
     
 async def _main() -> None:
     logging.basicConfig(level=settings.log_level)
-    logger.info("InvestorAi starting", version="0.1.0")
-    
+    logger.info("InvestorAI starting", version="0.1.0")
+
     await init_db()
     logger.info("Database ready")
-    
+
     _register_tools()
-    tools = await mcp.list_tools()
-    logger.info("Tools registered", count=len(tools))
-    
-    if settings.mcp_transport == "stdio":
+    logger.info("Tools registered")
+
+    # On Railway, always run HTTP transport
+    import os
+    if os.environ.get("RAILWAY_ENVIRONMENT") or settings.mcp_transport == "http":
+        await mcp.run_async(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=int(os.environ.get("PORT", settings.mcp_http_port)),
+        )
+    else:
         await _start_mcp_stdio()
-    elif settings.mcp_transport == "http":
-        await _start_mcp_http()
 
 # regular function - just calls asyncio.run(). asyncio.run() is sync function.
 # asyncio.run() starts the event loop. 

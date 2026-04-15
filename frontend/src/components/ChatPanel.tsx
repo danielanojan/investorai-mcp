@@ -88,7 +88,6 @@ const SUGGESTIONS = [
   "What is the 52-week high and low?",
   "How volatile is this stock?",
   "What is the latest news?",
-  ,
 ]
 
 export default function ChatPanel({ symbol, range }: Props) {
