@@ -2,32 +2,25 @@ import { useState, useRef, useCallback } from 'react'
 import type { Citation, TimeRange } from '../types'
 
 export interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
+  role:       'user' | 'assistant'
+  content:    string
   citations?: Citation[]
   streaming?: boolean
-  error?: boolean
+  error?:     boolean
 }
 
-export function useChat(symbol: string, range: TimeRange) {
-  const [messages,   setMessages]   = useState<ChatMessage[]>([])
-  const [streaming,  setStreaming]   = useState(false)
-  const abortRef                    = useRef<AbortController | undefined>(undefined)
+export function useChat(symbol: string, range: TimeRange, apiKey: string | null) {
+  const [messages,  setMessages]  = useState<ChatMessage[]>([])
+  const [streaming, setStreaming] = useState(false)
+  const abortRef                  = useRef<AbortController | undefined>(undefined)
 
   const sendMessage = useCallback(async (question: string) => {
-    if (!question.trim() || streaming) return
+    if (!question.trim() || streaming || !apiKey) return
 
-    // Add user message
-    const userMsg: ChatMessage = { role: 'user', content: question }
-    setMessages(prev => [...prev, userMsg])
-
-    // Add empty assistant message that will be filled by stream
-    setMessages(prev => [...prev, {
-      role: 'assistant', content: '', streaming: true
-    }])
+    setMessages(prev => [...prev, { role: 'user', content: question }])
+    setMessages(prev => [...prev, { role: 'assistant', content: '', streaming: true }])
     setStreaming(true)
 
-    // Build history for context (last 10 messages)
     const history = messages.slice(-10).map(m => ({
       role:    m.role,
       content: m.content,
@@ -38,7 +31,10 @@ export function useChat(symbol: string, range: TimeRange) {
     try {
       const response = await fetch('/api/chat/stream', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type':  'application/json',
+          'X-LLM-API-Key': apiKey,   // key sent per-request, never stored server-side
+        },
         body:    JSON.stringify({ symbol, question, history, range }),
         signal:  abortRef.current.signal,
       })
@@ -47,9 +43,9 @@ export function useChat(symbol: string, range: TimeRange) {
         throw new Error(`HTTP ${response.status}`)
       }
 
-      const reader  = response.body!.getReader()
-      const decoder = new TextDecoder()
-      let   buffer  = ''
+      const reader    = response.body!.getReader()
+      const decoder   = new TextDecoder()
+      let   buffer    = ''
       let   citations: Citation[] = []
 
       while (true) {
@@ -93,7 +89,7 @@ export function useChat(symbol: string, range: TimeRange) {
                 if (last.role === 'assistant') {
                   updated[updated.length - 1] = {
                     ...last,
-                    streaming:  false,
+                    streaming: false,
                     citations,
                   }
                 }
@@ -117,7 +113,7 @@ export function useChat(symbol: string, range: TimeRange) {
               })
             }
           } catch {
-            // Skip malformed JSON
+            // skip malformed JSON
           }
         }
       }
@@ -139,7 +135,7 @@ export function useChat(symbol: string, range: TimeRange) {
     } finally {
       setStreaming(false)
     }
-  }, [symbol, range, messages, streaming])
+  }, [symbol, range, messages, streaming, apiKey])
 
   const clearMessages = useCallback(() => {
     abortRef.current?.abort()

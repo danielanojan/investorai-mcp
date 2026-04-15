@@ -274,6 +274,9 @@ async def chat_stream(request: Request):
     import asyncio
     from fastapi.responses import StreamingResponse
 
+    # Read API key from header — never stored, used per-request only
+    api_key = request.headers.get("X-LLM-API-Key")
+
     body     = await request.json()
     symbol   = body.get("symbol", "AAPL").upper()
     question = body.get("question", "")
@@ -295,10 +298,15 @@ async def chat_stream(request: Request):
 
     async def event_stream():
         try:
-            # Send start event
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
-            # Get the full response from the trend summary tool
+            # Override settings key with user-provided key if present
+            if api_key:
+                import os
+                os.environ["LLM_API_KEY"] = api_key
+                from investorai_mcp.config import settings
+                settings.llm_api_key = api_key
+
             from investorai_mcp.tools.get_trend_summary import get_trend_summary
             result = await get_trend_summary(
                 symbol,
@@ -307,23 +315,21 @@ async def chat_stream(request: Request):
                 history=history if history else None,
             )
 
-            if "error" in result:
+            if "error" in result and result["error"]:
                 yield f"data: {json.dumps({'type': 'error', 'message': result['message']})}\n\n"
                 return
 
-            summary   = result.get("summary", "")
-            citations = result.get("citations", [])
+            summary = result.get("summary", "")
+            words   = summary.split(" ")
 
-            # Stream summary word by word
-            words = summary.split(" ")
             for i, word in enumerate(words):
                 chunk = word + (" " if i < len(words) - 1 else "")
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
                 await asyncio.sleep(0.03)
 
-            yield f"data: {json.dumps({'type': 'citations', 'citations': citations})}\n\n"
-            yield f"data: {json.dumps({'type': 'stats', 'stats': result.get('stats', {})})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'validation_passed': result.get('validation_passed', True)})}\n\n"
+            yield f"data: {json.dumps({'type': 'citations', 'citations': result.get('citations', [])})}\n\n"
+            yield f"data: {json.dumps({'type': 'stats',     'stats':     result.get('stats', {})})}\n\n"
+            yield f"data: {json.dumps({'type': 'done',      'validation_passed': result.get('validation_passed', False)})}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
