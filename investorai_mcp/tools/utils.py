@@ -54,10 +54,12 @@ def price_rows_from_result(result: dict) -> list[PriceRow]:
 
 def cache_result_from_price(result: dict) -> PriceCacheResult:
     """Convert a get_price_history() dict response into a PriceCacheResult."""
+    if result.get("error"):
+        return PriceCacheResult(data=[], is_stale=True, data_age_hours=float('inf'))
     return PriceCacheResult(
         data=price_rows_from_result(result),
-        is_stale=result["is_stale"],
-        data_age_hours=result["data_age_hours"],
+        is_stale=result.get("is_stale", False),
+        data_age_hours=result.get("data_age_hours", 0.0),
     )
 
 

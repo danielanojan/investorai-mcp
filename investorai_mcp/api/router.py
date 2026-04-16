@@ -382,7 +382,10 @@ async def chat_stream(request: Request):
 
             if "error" in result and result["error"]:
                 _req_status = "error"
-                yield f"data: {json.dumps({'type': 'error', 'message': result['message']})}\n\n"
+                msg = result.get("message", "Something went wrong.")
+                if result.get("retry") or result.get("code") == "DATA_UNAVAILABLE":
+                    msg = "Data is still being fetched from the market. Please try again in a few seconds."
+                yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
                 return
 
             summary = result.get("summary", "")

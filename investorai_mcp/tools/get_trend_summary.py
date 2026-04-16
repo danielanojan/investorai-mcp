@@ -497,7 +497,8 @@ async def get_trend_summary(
             return {
                 "error":   True,
                 "code":    "DATA_UNAVAILABLE",
-                "message": f"No price data available for {', '.join(symbols)}.",
+                "message": f"Data for {', '.join(symbols)} is being fetched. Please try again in a few seconds.",
+                "retry":   True,
             }
 
         # Build one combined data block and a single LLM prompt.
