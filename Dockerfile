@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y \
-    curl \
+    curl \ 
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -24,13 +24,10 @@ RUN cd frontend && npm ci && npm run build
 
 RUN mkdir -p /data
 
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Force HTTP transport on Railway
 ENV MCP_TRANSPORT=http
-ENV MCP_HTTP_PORT=8000
 
-CMD ["uv", "run", "uvicorn", "investorai_mcp.server:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+
+# Use Railway's dynamic PORT env var
+CMD ["sh", "-c", "uv run uvicorn investorai_mcp.server:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
