@@ -50,12 +50,13 @@ engine = create_async_engine(
     if "sqlite" in database_url else {},
 )
 
-# Enable foreign keys for SQLite
-@event.listens_for(engine.sync_engine, "connect")
-def set_sqlite_pragma(dbapi_conn, connection_record):
-    cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+# Enable foreign keys — SQLite only
+if "sqlite" in database_url:
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 #creates asyncSession object on demand. After session.commit() - python object should not expire and can still be used without needing to refresh from the database. 
 # This is important for our use case where we often want to return newly created or updated objects immediately after commit without needing an extra query to refresh them.
