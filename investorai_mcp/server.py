@@ -119,10 +119,15 @@ def create_app():
         lifespan=lifespan,
     )
 
-    # CORS — allow React dev server in development
+    # CORS — allow React dev server in development + production domain via env var
+    import os
+    _extra_origin = os.environ.get("ALLOWED_ORIGIN", "")
+    _origins = ["http://localhost:5173", "http://localhost:3000"]
+    if _extra_origin:
+        _origins.append(_extra_origin)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://localhost:3000"],
+        allow_origins=_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
