@@ -187,3 +187,75 @@ def validate_response(
         )
 
     return ValidationResult(passed=True, response=response_text)
+
+
+MULTI_TOLERANCE_PCT = 0.05  # 5% tolerance for multi-stock comparisons
+
+
+def validate_multi_response(
+    response_text: str,
+    all_stats: list[PriceSummaryStats],
+) -> ValidationResult:
+    """
+    Validate an LLM response that compares multiple stocks.
+
+    Builds a combined ground-truth pool from all stocks and uses a
+    wider 5% tolerance, because:
+    - Numbers from different stocks may be numerically close to each other,
+      so the "nearest" match might belong to a different stock.
+    - LLM rounding across multi-stock summaries is inherently less precise.
+
+    Passes through:
+    - Honest "I don't have data" responses
+    - Responses with no numbers
+    - Responses where all numbers are within 5% of at least one DB value
+    """
+    idk_phrases = [
+        "don't have reliable data",
+        "cannot answer",
+        "not available",
+        "no data",
+        "unable to provide",
+    ]
+    if any(phrase in response_text.lower() for phrase in idk_phrases):
+        return ValidationResult(passed=True, response=response_text)
+
+    numbers = extract_numbers(response_text)
+    if not numbers:
+        return ValidationResult(passed=True, response=response_text)
+
+    # Build a unified pool of ground truths from ALL stocks
+    ground_truths: list[float] = []
+    for st in all_stats:
+        ground_truths.extend([
+            st.start_price, st.end_price, st.high_price, st.low_price,
+            st.avg_price, abs(st.period_return_pct), st.volatility_pct,
+        ])
+
+    violations = []
+    for number in numbers:
+        nearest = _find_nearest(number, ground_truths)
+        if nearest is None:
+            logger.debug("No ground truth for %s — skipping", number)
+            continue
+
+        deviation = abs(number - nearest) / nearest if nearest > 0 else 0
+        if deviation > MULTI_TOLERANCE_PCT:
+            logger.warning(
+                "Multi validation failed: claimed=%.4f actual=%.4f deviation=%.2f%%",
+                number, nearest, deviation * 100,
+            )
+            violations.append(Violation(
+                claimed=number,
+                actual=nearest,
+                deviation=round(deviation * 100, 2),
+            ))
+
+    if violations:
+        return ValidationResult(
+            passed=False,
+            violations=violations,
+            response=IDK_RESPONSE,
+        )
+
+    return ValidationResult(passed=True, response=response_text)

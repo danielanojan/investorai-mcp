@@ -1,10 +1,10 @@
-"""Test for US market calender"""
+"""Test for US market calendar"""
 
 from datetime import date, datetime, timezone
 
 import pytest
 
-from investorai_mcp.calender import USMarketCalendar
+from investorai_mcp.calendar import USMarketCalendar
 
 @pytest.fixture
 def cal():
@@ -81,7 +81,7 @@ def test_next_market_open_skips_weekend(cal):
     #if today is Friday, next open should be Monday
     from unittest.mock import patch
     
-    with patch("investorai_mcp.calender.datetime") as mock_datetime:
+    with patch("investorai_mcp.calendar.datetime") as mock_datetime:
         mock_datetime.now.return_value = datetime(2026, 4, 3, 20, 0, 0, tzinfo=timezone.utc)
         next_open = cal.next_market_open()
     #should skip good friday + weekend --> Monday April 6th

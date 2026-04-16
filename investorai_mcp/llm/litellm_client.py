@@ -1,13 +1,14 @@
 """
 LiteLLM wrapper and Langfuse monitoring
 
-EveryLLM call in investorAI goes through this module. 
-Handles: BOYK routing, Langfuse tracing llm_usage_lig writing, 
+Every LLM call in investorAI goes through this module.
+Handles: BYOK routing, Langfuse tracing, llm_usage_log writing,
 error handling and token counting
 """
 
 import time
 import logging
+import contextlib
 from datetime import datetime, timezone
 
 import litellm
@@ -44,6 +45,22 @@ def _get_langfuse_handler():
 def get_langfuse():
     """Return the Langfuse client instance, or None if not configured."""
     return _langfuse
+
+
+def lf_span(name: str, as_type: str = "span", **kwargs):
+    """Return a Langfuse context-manager observation, or a no-op if Langfuse is not configured.
+
+    Use as::
+
+        with lf_span("get_price_history", input={"symbol": symbol, "range": range}):
+            ...
+
+    Child observations (e.g. the LLM generation in call_llm) are automatically
+    nested under the innermost active span via Langfuse's contextvars propagation.
+    """
+    if _langfuse:
+        return _langfuse.start_as_current_observation(as_type=as_type, name=name, **kwargs)
+    return contextlib.nullcontext()
     
 # Log to DB ----------------------------------------
 

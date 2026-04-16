@@ -8,6 +8,7 @@ from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
 from investorai_mcp.db.cache_manager import CacheManager, TTL_SECONDS
 from investorai_mcp.db.models import CacheMetadata, NewsArticle
+from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
@@ -54,6 +55,7 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     )
     result = await session.execute(stmt)
     rows = list(result.scalars().all())
+    result.close()
     return rows
 
 @mcp.tool()
@@ -95,69 +97,70 @@ async def get_news(
             "hint" : "Use search_ticker tool to find supported tickers."
         }
         
-    async with AsyncSessionLocal() as session:
-        manager = CacheManager(session, _adapter)
-        await manager.ensure_ticker_exists(symbol)
+    with lf_span("get_news", input={"symbol": symbol, "limit": limit}):
+        async with AsyncSessionLocal() as session:
+            manager = CacheManager(session, _adapter)
+            await manager.ensure_ticker_exists(symbol)
 
-        #check if we have cached news and whether its fresh. 
-        meta_stmt = select(CacheMetadata).where(
-            CacheMetadata.symbol == symbol, 
-            CacheMetadata.data_type == "news"
-        )
-        meta_result = await session.execute(meta_stmt)
-        meta = meta_result.scalar_one_or_none()
-        
-        ttl_hours = TTL_SECONDS["news"] / 3600
-        age_hours = CacheManager._age_hours(
-            meta.last_fetched if meta else None
-        )
-        
-        is_stale = meta is None or meta.is_stale or age_hours >= ttl_hours
-        
-        if is_stale:
-            #fetch live and store
-            rows = await _fetch_and_store_news(symbol, session)
-            
-            #update cache metadata
-            cache_meta = await manager._get_or_create_meta(symbol, "news")
-            await manager._update_meta_success(cache_meta, provider="yfinance")
-        else:
-            #serve from DB
-
-            stmt = (
-                select(NewsArticle)
-                .where(NewsArticle.symbol == symbol)
-                .order_by(NewsArticle.published_at.desc())
-                .limit(limit)
+            #check if we have cached news and whether its fresh.
+            meta_stmt = select(CacheMetadata).where(
+                CacheMetadata.symbol == symbol,
+                CacheMetadata.data_type == "news"
             )
-            result = await session.execute(stmt)
-            rows = list(result.scalars().all())
-            
-    if not rows:
+            meta_result = await session.execute(meta_stmt)
+            meta = meta_result.scalar_one_or_none()
+            meta_result.close()
+
+            ttl_hours = TTL_SECONDS["news"] / 3600
+            age_hours = CacheManager._age_hours(
+                meta.last_fetched if meta else None
+            )
+
+            is_stale = meta is None or meta.is_stale or age_hours >= ttl_hours
+
+            if is_stale:
+                #fetch live and store
+                rows = await _fetch_and_store_news(symbol, session)
+
+                #update cache metadata
+                cache_meta = await manager._get_or_create_meta(symbol, "news")
+                await manager._update_meta_success(cache_meta, provider="yfinance")
+            else:
+                #serve from DB
+                stmt = (
+                    select(NewsArticle)
+                    .where(NewsArticle.symbol == symbol)
+                    .order_by(NewsArticle.published_at.desc())
+                    .limit(limit)
+                )
+                result = await session.execute(stmt)
+                rows = list(result.scalars().all())
+                result.close()
+
+        if not rows:
+            return {
+                "symbol": symbol,
+                "articles": [],
+                "total": 0,
+                "message": f"No news articles found for {symbol}.",
+                "is_stale": False,
+            }
+
+        articles = [
+            {
+                "headline": row.headline,
+                "source": row.source,
+                "url": row.url,
+                "published_at": row.published_at.isoformat(),
+                "ai_summary": row.ai_summary,
+                "sentiment_score": row.sentiment_score,
+            }
+            for row in rows[:limit]
+        ]
         return {
-            "symbol": symbol, 
-            "articles": [],
-            "total": 0,
-            "message": f"No news articles found for {symbol}.",
-            "is_stale": False, 
+            "symbol": symbol,
+            "articles": articles,
+            "total": len(articles),
+            "is_stale": is_stale,
+            "age_hours": round(age_hours, 2) if age_hours != float('inf') else None,
         }
-    
-    articles = [
-        {
-            "headline": row.headline,
-            "source": row.source,
-            "url": row.url,
-            "published_at": row.published_at.isoformat(),
-            "ai_summary": row.ai_summary,
-            "sentiment_score": row.sentiment_score,
-        }
-        for row in rows[:limit]
-        
-    ]
-    return {
-        "symbol": symbol, 
-        "articles": articles,
-        "total": len(articles),
-        "is_stale": is_stale,
-        "age_hours": round(age_hours, 2) if age_hours != float('inf') else None,
-    }

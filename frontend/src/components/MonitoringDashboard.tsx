@@ -67,9 +67,11 @@ export default function MonitoringDashboard() {
 
   const { data: lfStats, isLoading: lfLoading } = useQuery({
     queryKey:        ['monitoring-langfuse'],
-    queryFn:         () => client.get('/monitoring/langfuse').then(r => r.data),
+    queryFn:         () => client.get('/monitoring/langfuse')
+                             .then(r => r.data)
+                             .catch((e: any) => e.response?.data ?? { error: { code: 'FETCH_ERROR', message: String(e) } }),
     refetchInterval: 60_000,
-    retry:           1,
+    retry:           0,
   })
 
   const { data: latStats, isLoading: latLoading } = useQuery({
@@ -528,6 +530,7 @@ export default function MonitoringDashboard() {
                           <th className="px-4 py-3">Latency</th>
                           <th className="px-4 py-3">Status</th>
                           <th className="px-4 py-3">Time</th>
+                          <th className="px-4 py-3"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -553,6 +556,18 @@ export default function MonitoringDashboard() {
                               {trace.timestamp
                                 ? new Date(trace.timestamp).toLocaleString()
                                 : '—'}
+                            </td>
+                            <td className="px-4 py-3">
+                              {lfStats.trace_url_base && trace.id && (
+                                <a
+                                  href={`${lfStats.trace_url_base}/${trace.id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:text-blue-800 hover:underline whitespace-nowrap"
+                                >
+                                  View ↗
+                                </a>
+                              )}
                             </td>
                           </tr>
                         ))}

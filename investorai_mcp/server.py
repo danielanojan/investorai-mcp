@@ -69,6 +69,8 @@ def _register_tools():
     from investorai_mcp.tools import get_news
     from investorai_mcp.tools import get_trend_summary    # noqa: F401
     from investorai_mcp.tools import get_sentiment        # noqa: F401
+    from investorai_mcp.tools import parse_question       # noqa: F401
+    from investorai_mcp.tools import get_system_info      # noqa: F401
     
 async def _start_mcp_stdio() -> None:
     logger.info("Starting MCP server", transport="stdio")

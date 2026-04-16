@@ -7,6 +7,7 @@ from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
 from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.db.models import PriceHistory
+from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported 
 
@@ -72,50 +73,48 @@ async def get_price_history(
             "hint" : " Use search_ticker tool to find supported tickers."
             
         }
-   
-    async with AsyncSessionLocal() as session:
-        manager = CacheManager(session, _adapter)
-        
-        #ensure ticker row exists in DB
-        await manager.ensure_ticker_exists(symbol)
-        
-        # Fetch from cache (triggers background refresh if stale)
-        result = await manager.get_prices(symbol, range)
-        
-    if not result.data:
+
+    with lf_span("get_price_history", input={"symbol": symbol, "range": range}):
+        async with AsyncSessionLocal() as session:
+            manager = CacheManager(session, _adapter)
+
+            #ensure ticker row exists in DB
+            await manager.ensure_ticker_exists(symbol)
+
+            # Fetch from cache (triggers background refresh if stale)
+            result = await manager.get_prices(symbol, range)
+
+        if not result.data:
+            return {
+                "error": True,
+                "code": "DATA_UNAVAILABLE",
+                "message": f"No price data available for {symbol}",
+                "hint": "Try again in few seconds - a background fetch is in progress."
+            }
+
+        prices = [_format_price(row, price_type) for row in result.data]
+
+        #compute summary statistics
+        price_values = [p["price"] for p in prices]
+        start_price = price_values[0] if price_values else 0
+        end_price = price_values[-1] if price_values else 0
+        period_return_pct = (
+            round((end_price - start_price) / start_price * 100, 2)
+            if start_price > 0 else 0
+        )
+
         return {
-            "error": True,
-            "code": "DATA_UNAVAILABLE",
-            "message": f"No price data available for {symbol}",
-            "hint": "Try again in few seconds - a background fetch is in progress."
+            "symbol": symbol,
+            "range": range,
+            "price_type": price_type,
+            "prices": prices,
+            "total_days": len(prices),
+            "start_price": round(start_price, 4),
+            "end_price": round(end_price, 4),
+            "high_price": round(max(price_values), 4) if price_values else None,
+            "low_price": round(min(price_values), 4) if price_values else None,
+            "period_return_pct": period_return_pct,
+            "is_stale": result.is_stale,
+            "data_age_hours": round(result.data_age_hours, 2),
+            "provider_used": result.provider_used,
         }
-    
-    prices = [_format_price(row, price_type) for row in result.data]
-    
-    #compute summary statistics
-    price_values = [p["price"] for p in prices]
-    start_price = price_values[0] if price_values else 0
-    end_price = price_values[-1] if price_values else 0
-    period_return_pct = (
-        round((end_price - start_price) / start_price * 100, 2) 
-        if start_price > 0 else 0
-    )
-    
-    
-    return {
-        "symbol": symbol,
-        "range": range,
-        "price_type": price_type,
-        "prices": prices,
-        "total_days": len(prices),
-        "start_price": prices[0]["date"] if prices else None,
-        "end_price": prices[-1]["date"] if prices else None,
-        "start_price": round(start_price, 4),
-        "end_price": round(end_price, 4),
-        "high_price": round(max(price_values), 4) if price_values else None,
-        "low_price": round(min(price_values), 4) if price_values else None,
-        "period_return_pct": period_return_pct,
-        "is_stale": result.is_stale,
-        "data_age_hours": round(result.data_age_hours, 2),
-        "provider_used": result.provider_used,
-    }
