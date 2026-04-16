@@ -1,5 +1,5 @@
 """
-US Market Calender - trading hours and holiday detection 
+US Market Calendar - trading hours and holiday detection
 
 This will be used by cache manager triggering yfinance refreshes
 when the market is closed. No external dependencies - holiday list 
@@ -129,7 +129,7 @@ class USMarketCalendar:
         et_time = time(et_hour, et_minute)
         et_date = dt.date()
         
-        #Adjust date if ET is a different calender than UTC
+        # Adjust date if ET is a different calendar day than UTC
         if dt.hour < 5:
             from datetime import timedelta
             et_date = et_date - timedelta(days=1)
@@ -149,5 +149,5 @@ class USMarketCalendar:
             d += timedelta(days=1)
         return d
     
-#Module level singleton - import and use directly
-calender = USMarketCalendar()
+# Module-level singleton — import and use directly
+calendar = USMarketCalendar()

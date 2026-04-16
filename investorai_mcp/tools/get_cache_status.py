@@ -43,6 +43,7 @@ async def get_cache_status(
         stmt = select(CacheMetadata).where(CacheMetadata.symbol == symbol)
         result = await session.execute(stmt)
         rows = result.scalars().all()
+        result.close()
         
     
     if not rows:

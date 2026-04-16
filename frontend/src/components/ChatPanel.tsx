@@ -5,7 +5,7 @@ import { useChat } from '../hooks/useChat'
 import { useBYOK } from '../hooks/useBYOK'
 import BYOKSetup from './BYOKSetup'
 import type { TimeRange } from '../types'
-import type { ChatMessage } from '../hooks/useChat'
+import type { ChatMessage, SentimentResult } from '../hooks/useChat'
 
 interface Props {
   symbol: string
@@ -35,6 +35,66 @@ function CitationBadge({ citation }: { citation: any }) {
   return null
 }
 
+function SentimentBadge({ s }: { s: SentimentResult }) {
+  const isPos = s.overall === 'positive'
+  const isNeg = s.overall === 'negative'
+  const colour = isPos
+    ? 'bg-green-50 border-green-200 text-green-700'
+    : isNeg
+    ? 'bg-red-50 border-red-200 text-red-700'
+    : 'bg-gray-50 border-gray-200 text-gray-600'
+  const icon = isPos ? '▲' : isNeg ? '▼' : '●'
+  const scoreLabel = s.score != null ? ` ${s.score > 0 ? '+' : ''}${s.score.toFixed(2)}` : ''
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded border ${colour}`}>
+      {icon} {s.overall}{scoreLabel}
+    </span>
+  )
+}
+
+function SentimentBlock({ sentiment, sentiments }: {
+  sentiment?:  SentimentResult | null
+  sentiments?: Record<string, SentimentResult> | null
+}) {
+  if (!sentiment && (!sentiments || Object.keys(sentiments).length === 0)) return null
+
+  return (
+    <div className="mt-2 pt-2 border-t border-gray-100 space-y-1.5 text-xs text-gray-600">
+      {sentiment && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-gray-700">Sentiment:</span>
+            <SentimentBadge s={sentiment} />
+          </div>
+          {sentiment.reasoning && (
+            <p className="text-gray-500 leading-snug">{sentiment.reasoning}</p>
+          )}
+          {sentiment.key_themes && sentiment.key_themes.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {sentiment.key_themes.map((t, i) => (
+                <span key={i} className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[11px]">{t}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {sentiments && Object.keys(sentiments).length > 0 && (
+        <div className="space-y-1">
+          <span className="font-medium text-gray-700">Sentiment per ticker:</span>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(sentiments).map(([sym, s]) => (
+              <div key={sym} className="flex items-center gap-1">
+                <span className="font-mono text-[11px] text-gray-500">{sym}</span>
+                <SentimentBadge s={s} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
   return (
@@ -58,7 +118,12 @@ function Message({ message }: { message: ChatMessage }) {
           {message.content
             ? isUser
               ? message.content
-              : <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1"><ReactMarkdown>{message.content}</ReactMarkdown></div>
+              : (
+                <>
+                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1"><ReactMarkdown>{message.content}</ReactMarkdown></div>
+                  <SentimentBlock sentiment={message.sentiment} sentiments={message.sentiments} />
+                </>
+              )
             : message.streaming && (
               <span className="flex gap-1 items-center py-0.5">
                 <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />

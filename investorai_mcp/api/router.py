@@ -1,7 +1,7 @@
 """
 FastAPI BFF - Backend and frontend
 
-Rest layer consumeed by React Web UI. 
+REST layer consumed by React Web UI.
 No business logic here - calls the same internal services
 as the MCP tools
 
@@ -392,6 +392,10 @@ async def chat_stream(request: Request):
 
             yield f"data: {json.dumps({'type': 'citations', 'citations': result.get('citations', [])})}\n\n"
             yield f"data: {json.dumps({'type': 'stats',     'stats':     result.get('stats', {})})}\n\n"
+            if result.get('sentiment'):
+                yield f"data: {json.dumps({'type': 'sentiment', 'sentiment': result['sentiment']})}\n\n"
+            if result.get('sentiments'):
+                yield f"data: {json.dumps({'type': 'sentiments', 'sentiments': result['sentiments']})}\n\n"
             yield f"data: {json.dumps({'type': 'done',      'validation_passed': result.get('validation_passed', False)})}\n\n"
 
         except Exception as e:
@@ -635,10 +639,11 @@ async def monitoring_langfuse(request: Request):
     avg_latency = round(sum(latencies) / len(latencies)) if latencies else 0
 
     return {
-        "traces":      traces[:20],
-        "total_traces": traces_data.get("meta", {}).get("totalItems", len(traces)),
+        "traces":         traces[:20],
+        "total_traces":   traces_data.get("meta", {}).get("totalItems", len(traces)),
         "avg_latency_ms": avg_latency,
-        "usage":       usage_data,
+        "usage":          usage_data,
+        "trace_url_base": f"{host}/trace",
     }
 
 
