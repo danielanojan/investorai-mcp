@@ -106,25 +106,28 @@ class CacheManager:
         
     
     async def ensure_ticker_exists(self, symbol: str) -> Ticker | None:
-        result = await self._session.get(Ticker, symbol)
-        if result:
-            return result # if ticker already exists in DB, return it immediately
-    
         from investorai_mcp.stocks import get_ticker_info
         info = get_ticker_info(symbol)
         if not info:
-            return None # not in our supported list
-        
-        ticker = Ticker(
-            symbol=symbol,
-            name=info["name"],
-            sector=info["sector"],
-            exchange=info["exchange"],
-            is_supported=True,
+            return None  # not in our supported list
+
+        from investorai_mcp.db import database_url
+        insert = _get_insert(database_url)
+
+        stmt = (
+            insert(Ticker)
+            .values(
+                symbol=symbol,
+                name=info["name"],
+                sector=info["sector"],
+                exchange=info["exchange"],
+                is_supported=True,
+            )
+            .on_conflict_do_nothing(index_elements=["symbol"])
         )
-        self._session.add(ticker)
+        await self._session.execute(stmt)
         await self._session.commit()
-        return ticker
+        return await self._session.get(Ticker, symbol)
     
     
     ######## Private : meta -----------------------------
