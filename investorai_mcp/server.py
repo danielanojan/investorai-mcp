@@ -138,7 +138,7 @@ def create_app():
     app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 
     # API routes
-    app.include_router(router)
+    app.include_router(router, prefix="/api")
 
     # Serve React build in production
     frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"

@@ -27,7 +27,7 @@ RUN mkdir -p /data
 ENV MCP_TRANSPORT=http
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=5 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
 # Use Railway's dynamic PORT env var
 CMD ["sh", "-c", "uv run uvicorn investorai_mcp.server:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
