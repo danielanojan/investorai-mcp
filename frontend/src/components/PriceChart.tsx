@@ -29,6 +29,7 @@ function CustomTooltip({ active, payload, label }: any) {
 }
 
 export default function PriceChart({ data }: Props) {
+  if (!data?.prices?.length) return null
   const isPositive = data.period_return_pct >= 0
   const colour     = isPositive ? '#16a34a' : '#dc2626'
   const fillId     = `gradient-${data.symbol}`

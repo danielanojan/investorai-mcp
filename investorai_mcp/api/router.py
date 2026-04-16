@@ -118,6 +118,8 @@ async def get_prices(
         )
     from investorai_mcp.tools.get_price_history import get_price_history
     result = await get_price_history(symbol, range=range, price_type=price_type)
+    if isinstance(result, dict) and result.get("error"):
+        return JSONResponse(status_code=503, content=result)
     return result
 
 @router.get("/stocks/{symbol}/summary")
@@ -139,6 +141,8 @@ async def get_summary(
         )
     from investorai_mcp.tools.get_daily_summary import get_daily_summary
     result = await get_daily_summary(symbol, range=range)
+    if isinstance(result, dict) and result.get("error"):
+        return JSONResponse(status_code=503, content=result)
     return result
 
 @router.get("/stocks/{symbol}/news")
@@ -160,6 +164,8 @@ async def get_news_endpoint(
         )
     from investorai_mcp.tools.get_news import get_news
     result = await get_news(symbol, limit=limit)
+    if isinstance(result, dict) and result.get("error"):
+        return JSONResponse(status_code=503, content=result)
     return result
 
 @router.get("/stocks/{symbol}/sentiment")
