@@ -94,6 +94,7 @@ async def _start_mcp_http() -> None:
 
 
 def create_app():
+    from contextlib import asynccontextmanager
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.staticfiles import StaticFiles
@@ -106,9 +107,16 @@ def create_app():
     from investorai_mcp.api.rate_limit import limiter
     from investorai_mcp.api.router import router
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        await init_db()
+        logger.info("Database ready")
+        yield
+
     app = FastAPI(
         title="InvestorAI BFF",
         version="0.1.0",
+        lifespan=lifespan,
     )
 
     # CORS — allow React dev server in development

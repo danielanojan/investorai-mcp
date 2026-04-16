@@ -50,7 +50,7 @@ InvestorAI MCP gives AI assistants structured, grounded access to price history,
 
 ```bash
 # Clone and install
-git clone https://github.com/your-username/investorai-mcp.git
+git clone https://github.com/danielanojan/investorai-mcp.git
 cd investorai-mcp
 
 # Install with uv (recommended)
@@ -63,14 +63,35 @@ pip install -e .
 ### Run
 
 ```bash
-# Start the MCP + REST + Web UI server
-uv run investorai-mcp
+# HTTP mode — MCP endpoint available at http://localhost:8000/mcp
+MCP_TRANSPORT=http uv run investorai-mcp
 
-# Or: stdio mode for Claude Desktop
-MCP_TRANSPORT=stdio uv run investorai-mcp
+# stdio mode — for Claude Desktop (no HTTP port)
+uv run investorai-mcp
 ```
 
-Open [http://localhost:8000](http://localhost:8000) for the React playground.
+> **Note:** First startup may take ~30 seconds — LiteLLM downloads model metadata on first run.
+
+The MCP endpoint is available at [http://localhost:8000/mcp](http://localhost:8000/mcp). This is not a browser UI — connect an MCP client (Claude Code, VS Code, Cursor) to that URL.
+
+### React Frontend (optional)
+
+The frontend is a Vite + React app that talks to the FastAPI BFF on port 8000.
+
+**Terminal 1 — FastAPI backend:**
+
+```bash
+uvicorn investorai_mcp.server:create_app --factory --port 8000 --reload
+```
+
+**Terminal 2 — React dev server:**
+
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev
+```
+
+Open [http://localhost:5173](http://localhost:5173) — Vite automatically proxies `/api/*` requests to the backend on port 8000.
 
 ### Configuration
 
@@ -93,7 +114,7 @@ LANGFUSE_SECRET_KEY=sk-lf-...
 LANGFUSE_HOST=https://cloud.langfuse.com
 
 # MCP transport
-MCP_TRANSPORT=http              # http (default) | stdio
+MCP_TRANSPORT=http              # stdio (default) | http
 MCP_HTTP_PORT=8000
 MCP_HTTP_API_KEY=               # optional bearer token for HTTP transport
 
@@ -164,10 +185,10 @@ After saving, restart Claude Desktop completely. Look for the tools icon — inv
 
 Claude Code uses streamable HTTP transport — it connects to a running InvestorAI server.
 
-First, start the server:
+First, start the server in HTTP mode:
 
 ```bash
-uv run investorai-mcp
+MCP_TRANSPORT=http uv run investorai-mcp
 ```
 
 Then register the MCP server:
