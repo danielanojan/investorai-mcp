@@ -18,7 +18,7 @@ InvestorAI MCP gives AI assistants structured, grounded access to price history,
 - **Sentiment Analysis** — AI scores recent headlines positive / negative / neutral with reasoning and key themes
 - **Semantic Ticker Search** — Fuzzy search by company name, product keyword, or exact symbol (no embeddings required)
 - **Natural Language Dates** — Understands "yesterday", "last Wednesday", "May 2023 to January 2025", "last 54 days"
-- **BYOK AI Chat** — Bring your own API key (Claude, OpenAI, Groq) — keys stored in browser localStorage only, never sent to the server
+- **BYOK AI Chat** — Bring your own API key (Claude, OpenAI, Groq) — keys stored in browser localStorage only, sent per-request in a header, never persisted server-side
 - **SSE Streaming** — Token-by-token response streaming via Server-Sent Events, with live citation and sentiment injection
 - **Response Validation** — Configurable strict / warm-only LLM output validation, skipped automatically for news-focused queries
 - **Playground Dashboard** — DB health, cache status, Langfuse traces, and latency percentiles in a single React pane
@@ -199,81 +199,45 @@ claude mcp add investorai --transport http http://localhost:8000/mcp
 
 Try asking: *"How has NVDA performed over the last year compared to AMD?"*
 
-## Sequence diagram for get_trend_summary with structured parsing and sentiment
+## Sequence diagram — BYOK chat with agentic ReAct loop
 
 ```mermaid
 sequenceDiagram
     actor User
     participant Frontend as Frontend_ChatPanel
     participant Hook as Hook_useChat
-    participant API as API_event_stream
-    participant Tool as Tool_get_trend_summary
-    participant Price as Tool_get_price_history
-    participant News as Tool_get_news
-    participant Sent as Tool_get_sentiment
-    participant Info as Tool_get_stock_info
+    participant API as API_chat_stream
+    participant Agent as Agent_ReAct_loop
+    participant Tools as MCP_tools
     participant LLM as LLM_engine
 
     User->>Frontend: Type question
     Frontend->>Hook: submitQuestion(question)
-    Hook->>API: POST /api/chat
-    API-->>Hook: 200 OK (start SSE id)
-    Hook->>API: GET /api/chat/events (SSE)
+    Hook->>API: POST /api/chat/stream (SSE)
+    API-->>Hook: SSE type=start
 
-    API->>Tool: await get_trend_summary(question,...)
+    API->>Agent: run_agent_loop(question, api_key)
 
-    Note over Tool: Meta handling
-    Tool->>Tool: handle_meta_question(question)
-    alt Meta_question
-        Tool-->>API: meta response dict
-    else Market_question
-        Note over Tool: Question parsing helpers from parse_question
-        Tool->>Tool: detect_symbols / detect_sector
-        Tool->>Tool: is_all_stocks_question
-        Tool->>Tool: detect_duration / resolve_date_range
-        Tool->>Tool: resolve_relative_date / resolve_absolute_date
-        Tool->>Tool: detect_range / extract_date_context
+    loop ReAct iterations (max 8)
+        Agent->>LLM: messages + 10 tool schemas
+        LLM-->>Agent: tool_calls[] or final text
 
-        Note over Tool: Determine news_focus
-        Tool->>Tool: is_news_question(question)
-
-        par Per_symbol_data_fetch
-            loop For each symbol
-                alt news_focus True
-                    Tool->>Price: get_price_history(symbol, range)
-                    Tool->>News: get_news(symbol, limit=6)
-                    Tool->>Info: get_stock_info(symbol)
-                    Tool->>Sent: get_sentiment(symbol, limit=10)
-                else news_focus False
-                    Tool->>Price: get_price_history(symbol, range)
-                    Tool->>News: get_news(symbol, limit=6)
-                    Tool->>Info: get_stock_info(symbol)
-                end
-            end
-        and Trend_analysis
-            Tool->>Tool: cache_result_from_price(price_result)
-            Tool->>Tool: news_rows_from_result(news_result)
-            Tool->>LLM: Call with enriched question and stats
-            LLM-->>Tool: raw_response
-            Tool->>Tool: validate_response or validate_multi_response
+        alt tool_calls returned
+            Note over Agent: Execute all tool_calls concurrently
+            Agent->>Tools: asyncio.gather(parse_question, get_daily_summary×N, ...)
+            Tools-->>Agent: results[]
+            Agent->>Agent: append tool results to messages
+        else final text returned
+            Agent-->>API: final response string
         end
-
-        Tool-->>API: result dict
     end
 
-    Note over API: Stream structured events
-    API-->>Hook: SSE type=text delta chunks
-    API-->>Hook: SSE type=citations
-    API-->>Hook: SSE type=stats
-    opt news_focus with sentiment
-        API-->>Hook: SSE type=sentiment
-        API-->>Hook: SSE type=sentiments
-    end
+    Note over API: Stream final response
+    API-->>Hook: SSE type=token (word by word)
     API-->>Hook: SSE type=done
 
-    Hook->>Hook: Update assistant ChatMessage
     Hook-->>Frontend: messages state updated
-    Frontend-->>User: Render answer with SentimentBlock and badges
+    Frontend-->>User: Render answer
 ```
 
 ## Available MCP Tools
@@ -323,26 +287,31 @@ The `/chat/stream` endpoint emits the following Server-Sent Events:
 
 | Event type | Payload | Description |
 |---|---|---|
-| `token` | `{ content: string }` | Incremental LLM response tokens |
-| `citations` | `{ citations: Citation[] }` | Source citations (DB dates + news URLs) |
-| `stats` | `{ stats: PriceStats }` | Period return, high/low, volatility |
-| `sentiment` | `{ sentiment: SentimentResult }` | Single-stock sentiment score |
-| `sentiments` | `{ sentiments: Record<string, SentimentResult> }` | Multi-stock sentiment map |
-| `done` | — | Stream complete |
+| `start` | `{ symbol: string }` | Stream opened |
+| `token` | `{ content: string }` | Incremental response word |
+| `done` | `{ validation_passed: bool }` | Stream complete |
 | `error` | `{ message: string }` | Stream-level error |
 
 ## Architecture Overview
 
 InvestorAI is a Python/FastAPI backend with a React + Vite + Tailwind frontend. The same internal service layer is consumed by four surfaces: the REST API (web UI), the MCP server (11 tools for AI clients), the SSE chat stream, and the monitoring endpoints.
 
-**Data flow:**
+**Data flow — MCP tools (Claude Desktop / Claude Code):**
 1. **yfinance adapter** fetches OHLCV + news from Yahoo Finance on-demand and persists to SQLite
-2. **Cache manager** enforces TTLs per data type (prices vs news) and tracks fetch errors
+2. **Cache manager** enforces TTLs per data type (prices vs news), tracks fetch errors, serialises concurrent writes via WAL mode + asyncio locks
 3. **MCP tools** query the SQLite cache and return structured results — no LLM needed for price or news lookups
 4. **LiteLLM gateway** (`litellm_client.py`) handles all LLM calls — provider-agnostic, supports Claude / OpenAI / Groq via a single BYOK interface
-5. **Response validator** checks LLM output against DB-sourced price stats to catch hallucinated numbers (skipped for news-focused queries where prices in articles may differ from DB aggregates)
+5. **Response validator** checks LLM output against DB-sourced price stats to catch hallucinated numbers
 6. **Citation extractor** strips inline source markers from LLM responses and returns structured citation objects
 7. **Langfuse** wraps each tool invocation as a span via `lf_span()` context manager — zero-overhead when keys are not configured
+
+**Data flow — BYOK chat (`/api/chat/stream`):**
+1. User question + BYOK key arrive at the SSE endpoint
+2. **Agent ReAct loop** (`llm/agent.py`) sends the question to the LLM with 10 primitive tool schemas
+3. LLM decides which tools to call — can return multiple tool calls in one turn
+4. All tool calls in a turn execute concurrently via `asyncio.gather`
+5. Results fed back to LLM; loop repeats until LLM produces a final text response
+6. Final text streamed token-by-token as SSE events
 
 **Database:** SQLite with aiosqlite (default) or PostgreSQL via asyncpg. Alembic handles schema migrations. Railway's PostgreSQL addon is detected automatically via the `DATABASE_URL` environment variable.
 
@@ -382,7 +351,7 @@ Langfuse sections are hidden gracefully when keys are not configured.
 | News-focused path | Parallel `get_news` + `get_sentiment` | Sentiment enriches the prompt before the LLM runs, so the summary reflects pre-scored headlines rather than asking the LLM to score and summarise in one pass |
 | Multi-stock via concurrent gather | `asyncio.gather` per symbol | Parallelises DB reads and sentiment calls for comparison queries; scales to full sector queries (~14 stocks) without sequential latency stacking |
 | SSE streaming (final-response only) | Full tool-calling loop server-side, only LLM tokens streamed | Avoids complex partial-stream / tool-call interleaving. Tool status goes to structured fields; final reply streams token-by-token |
-| BYOK security model | API keys in browser localStorage | Keys never touch the server at rest — sent per-request in the POST body, never logged, never persisted |
+| BYOK security model | API keys in browser localStorage | Keys never touch the server at rest — sent per-request in `X-LLM-API-Key` header, never logged, never persisted |
 | FastMCP dual transport | Streamable HTTP (`/mcp`) + stdio mode | HTTP for remote/web clients, stdio for local desktop clients (Claude Desktop) |
 | Langfuse opt-in via `lf_span` | Context manager, no-op when unconfigured | Zero overhead in deployments without Langfuse keys — same code path, observability added by setting two env vars |
 | SQLite default, PostgreSQL optional | Detected via `DATABASE_URL` | Zero-config local development. Railway's PostgreSQL addon is a one-click upgrade for production |
@@ -441,7 +410,7 @@ investorai_mcp/
 ├── api/                # FastAPI router, rate limiting, error handlers
 ├── data/               # Data adapters (yfinance, alpha_vantage, polygon)
 ├── db/                 # SQLAlchemy models, Alembic migrations, cache manager
-└── llm/                # LiteLLM client, Langfuse tracing, validator, citations
+└── llm/                # LiteLLM client, agent loop, Langfuse tracing, validator, citations
 frontend/
 └── src/
     ├── components/     # React UI — ChatPanel, PriceChart, MonitoringDashboard…
@@ -470,6 +439,7 @@ tests/
 | Claude Desktop MCP integration | ✅ Tested |
 | Claude Code MCP integration | ✅ Tested |
 | Railway deployment (PostgreSQL) | ✅ Done |
+| Agentic ReAct loop for BYOK chat | ✅ Done |
 | VS Code + GitHub Copilot MCP integration |🔜 Planned |
 | Cursor MCP integration | 🔜 Planned|
 | RAG to capture revevant historical news articles | 🔜 Planned|
