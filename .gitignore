@@ -1,4 +1,5 @@
 .env
+learning.md
 *.db
 *.db-wal
 *.db-shm

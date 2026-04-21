@@ -32,9 +32,10 @@ Do not include any other text. Return only the JSON object"""
 
 @mcp.tool()
 async def get_sentiment(
-    ticker_symbol: str, 
+    ticker_symbol: str,
     limit: int=10,
     ctx: Context | None = None,
+    api_key: str | None = None,
 ) -> dict:
     """
     Return AI-Powered news sentiment analysis for a supported stock.
@@ -121,6 +122,7 @@ async def get_sentiment(
                 session_hash=session_hash,
                 tool_name="get_sentiment",
                 max_tokens=200,
+                api_key=api_key,
             )
 
             #parse JSON response

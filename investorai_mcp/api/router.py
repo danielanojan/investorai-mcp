@@ -356,19 +356,13 @@ async def chat_stream(request: Request):
         try:
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
-            # Override settings key with user-provided key if present
-            if api_key:
-                import os
-                os.environ["LLM_API_KEY"] = api_key
-                from investorai_mcp.config import settings
-                settings.llm_api_key = api_key
-
             from investorai_mcp.tools.get_trend_summary import get_trend_summary
             result = await get_trend_summary(
                 symbol,
                 range="5Y",   # chat always gets max data; question range detection narrows it
                 question=question,
                 history=history if history else None,
+                api_key=api_key or None,
             )
 
             # Extract component timings before streaming begins

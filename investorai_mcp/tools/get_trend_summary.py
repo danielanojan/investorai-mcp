@@ -60,6 +60,7 @@ async def _analyse_one_symbol(
     resolved_date: date | None = None,
     date_range: tuple[date, date] | None = None,
     news_focus: bool = False,
+    api_key: str | None = None,
 ) -> dict:
     """Fetch data, call LLM, validate, and return summary for one symbol."""
     import asyncio as _asyncio
@@ -161,7 +162,7 @@ async def _analyse_one_symbol(
     if news_focus:
         news_result, sentiment_result = await _asyncio.gather(
             get_news(symbol, limit=10),
-            get_sentiment(symbol, limit=10),
+            get_sentiment(symbol, limit=10, api_key=api_key),
         )
     else:
         news_result = await get_news(symbol, limit=10)
@@ -203,6 +204,7 @@ async def _analyse_one_symbol(
             messages=messages,
             session_hash=session_hash,
             tool_name="get_trend_summary",
+            api_key=api_key,
         )
     except RuntimeError as e:
         return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}
@@ -264,6 +266,7 @@ async def get_trend_summary(
     question: str = "Summarise this stock's recent performance.",
     history: list[dict] | None = None,
     ctx: Context | None = None,
+    api_key: str | None = None,
 ) -> dict:
     """Generate an AI narrative summary of a stock's price trend.
 
@@ -393,7 +396,7 @@ async def get_trend_summary(
                 get_price_history(sym, effective_range),
                 get_news(sym, limit=6),
                 get_stock_info(sym),
-                get_sentiment(sym, limit=10),
+                get_sentiment(sym, limit=10, api_key=api_key),
             )
         else:
             price_result, news_result, stock_info_result = await _asyncio.gather(
@@ -416,7 +419,7 @@ async def get_trend_summary(
             with _lf_span("compress_history",
                                  input={"history_len": len(history)}):
                 compressed_history = await compress_history(
-                    history, session_hash=session_hash
+                    history, session_hash=session_hash, api_key=api_key,
                 )
 
         # Single stock — return flat dict (backwards-compatible)
@@ -424,6 +427,7 @@ async def get_trend_summary(
             return await _analyse_one_symbol(
                 symbols[0], effective_range, final_question, session_hash,
                 compressed_history, resolved_date, date_range, news_focus,
+                api_key=api_key,
             )
 
         # Multiple stocks — fetch all data concurrently
@@ -582,6 +586,7 @@ async def get_trend_summary(
                 messages=messages,
                 session_hash=session_hash,
                 tool_name="get_trend_summary",
+                api_key=api_key,
             )
         except RuntimeError as e:
             return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}

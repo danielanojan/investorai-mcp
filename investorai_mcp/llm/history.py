@@ -33,8 +33,9 @@ _SUMMARY_PROMPT = (
 
 
 async def compress_history(
-    messages: list[dict], 
-    session_hash: str = "anonymous",   
+    messages: list[dict],
+    session_hash: str = "anonymous",
+    api_key: str | None = None,
 ) -> list[dict]:
     """
     Compress chat history to reduce token usage. 
@@ -71,7 +72,8 @@ async def compress_history(
             ],
             session_hash=session_hash,
             tool_name="history_compressor",
-            max_tokens = 200, # keeping the sumamry short
+            max_tokens=200,
+            api_key=api_key,
         )
         
         compressed = [

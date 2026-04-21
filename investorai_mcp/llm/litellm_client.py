@@ -95,10 +95,11 @@ async def _log_usage(
 #### Main call function --------------------------------
 
 async def call_llm(
-    messages: list[dict], 
+    messages: list[dict],
     session_hash : str = "anonymous",
     tool_name: str | None = None,
     max_tokens: int = 500,
+    api_key: str | None = None,
 ) -> dict:
     """
     Send messages to the LLM and return the response text
@@ -118,16 +119,17 @@ async def call_llm(
     Raises: 
         RuntimeError: if no API key is configured or LLM call fails. 
     """
-    if not settings.llm_api_key:
+    resolved_key = api_key or settings.llm_api_key
+    if not resolved_key:
         raise RuntimeError("No LLM API key configured. "
                            "Please set llm_api_key in .env file.")
-    
+
     #Build kwargs for litellm
     call_kwargs = {
         "model": settings.llm_model,
         "messages": messages,
         "max_tokens": max_tokens,
-        "api_key": settings.llm_api_key,
+        "api_key": resolved_key,
     }
     
         

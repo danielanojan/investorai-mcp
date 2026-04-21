@@ -20,6 +20,14 @@ from investorai_mcp.db.models import CacheMetadata, PriceHistory, Ticker
 
 logger = logging.getLogger(__name__)
 
+# Per-symbol refresh locks — prevents concurrent background writes to SQLite
+_refresh_locks: dict[str, asyncio.Lock] = {}
+
+def _refresh_lock(symbol: str) -> asyncio.Lock:
+    if symbol not in _refresh_locks:
+        _refresh_locks[symbol] = asyncio.Lock()
+    return _refresh_locks[symbol]
+
 T = TypeVar("T")
 
 TTL_SECONDS = {
@@ -80,9 +88,11 @@ class CacheManager:
         #If stale — this is the clever part. It returns the old data immediately so the user isn't waiting, then kicks off a background refresh task. 
         # The next request will get fresh data. This is the classic stale-while-revalidate pattern — prioritise speed over freshness.
         rows = await self._read_prices(symbol, period)
-        asyncio.create_task(
-            self._refresh_prices(symbol, meta)
-        )
+        lock = _refresh_lock(symbol)
+        if not lock.locked():
+            asyncio.create_task(
+                self._locked_refresh_prices(symbol, meta, lock)
+            )
         return CacheResult(
             data=rows,
             is_stale=True,
@@ -178,6 +188,12 @@ class CacheManager:
         return rows
     
     ####### Private : refresh --------------------------   
+    async def _locked_refresh_prices(
+        self, symbol: str, meta: CacheMetadata, lock: asyncio.Lock
+    ) -> None:
+        async with lock:
+            await self._refresh_prices(symbol, meta)
+
     async def _refresh_prices(
         self, symbol: str, meta: CacheMetadata
     ) -> None:
