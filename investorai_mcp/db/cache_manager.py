@@ -20,13 +20,19 @@ from investorai_mcp.db.models import CacheMetadata, PriceHistory, Ticker
 
 logger = logging.getLogger(__name__)
 
-# Per-symbol refresh locks — prevents concurrent background writes to SQLite
+# Per-symbol locks — prevent duplicate refreshes for the same ticker
 _refresh_locks: dict[str, asyncio.Lock] = {}
 
 def _refresh_lock(symbol: str) -> asyncio.Lock:
     if symbol not in _refresh_locks:
         _refresh_locks[symbol] = asyncio.Lock()
     return _refresh_locks[symbol]
+
+# Global write lock — SQLite has one file-level write lock regardless of symbol.
+# When 50 tickers refresh concurrently (e.g. agent loop broad query), all try to
+# write the same file. This serialises writes at the Python level before they
+# reach SQLite, avoiding "database is locked" errors.
+_global_write_lock = asyncio.Lock()
 
 T = TypeVar("T")
 
@@ -191,8 +197,9 @@ class CacheManager:
     async def _locked_refresh_prices(
         self, symbol: str, meta: CacheMetadata, lock: asyncio.Lock
     ) -> None:
-        async with lock:
-            await self._refresh_prices(symbol, meta)
+        async with lock:                  # per-symbol: skip if already refreshing this ticker
+            async with _global_write_lock:  # global: serialise all SQLite writes
+                await self._refresh_prices(symbol, meta)
 
     async def _refresh_prices(
         self, symbol: str, meta: CacheMetadata

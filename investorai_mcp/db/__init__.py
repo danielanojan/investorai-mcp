@@ -50,12 +50,14 @@ engine = create_async_engine(
     if "sqlite" in database_url else {},
 )
 
-# Enable foreign keys — SQLite only
+# SQLite pragmas — WAL mode + busy timeout to serialise concurrent writers
 if "sqlite" in database_url:
     @event.listens_for(engine.sync_engine, "connect")
     def set_sqlite_pragma(dbapi_conn, connection_record):
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.execute("PRAGMA journal_mode=WAL")   # queue writers instead of failing
+        cursor.execute("PRAGMA busy_timeout=5000")  # wait up to 5s before erroring
         cursor.close()
 
 #creates asyncSession object on demand. After session.commit() - python object should not expire and can still be used without needing to refresh from the database. 

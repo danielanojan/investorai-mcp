@@ -7,11 +7,14 @@ as the MCP tools
 
 """
 
+import logging
 import math
 import time as _time
 import uuid
 from datetime import datetime, timezone
 from typing import Literal
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -356,50 +359,38 @@ async def chat_stream(request: Request):
         try:
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
-            from investorai_mcp.tools.get_trend_summary import get_trend_summary
-            result = await get_trend_summary(
-                symbol,
-                range="5Y",   # chat always gets max data; question range detection narrows it
+            import hashlib
+            from datetime import datetime, timezone
+            from investorai_mcp.llm.agent import run_agent_loop
+
+            session_hash = hashlib.sha256(
+                f"{symbol}{datetime.now(timezone.utc).date()}".encode()
+            ).hexdigest()[:16]
+
+            summary = await run_agent_loop(
                 question=question,
                 history=history if history else None,
                 api_key=api_key or None,
+                session_hash=session_hash,
             )
-
-            # Extract component timings before streaming begins
-            _timings      = result.get("_timings") or {}
-            _db_fetch_ms  = _timings.get("db_fetch_ms")
-            _llm_ms       = _timings.get("llm_ms")
-            _validation_ms = _timings.get("validation_ms")
 
             # Capture server-side processing time (before streaming)
             _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
 
-            if "error" in result and result["error"]:
+            if not summary:
                 _req_status = "error"
-                msg = result.get("message", "Something went wrong.")
-                if result.get("retry") or result.get("code") == "DATA_UNAVAILABLE":
-                    msg = "Data is still being fetched from the market. Please try again in a few seconds."
-                yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No response generated.'})}\n\n"
                 return
 
-            summary = result.get("summary", "")
-            words   = summary.split(" ")
-
+            words = summary.split(" ")
             for i, word in enumerate(words):
-                # Capture time-to-first-token on the first iteration
                 if _ttft_ms is None:
                     _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
                 chunk = word + (" " if i < len(words) - 1 else "")
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
                 await asyncio.sleep(0.03)
 
-            yield f"data: {json.dumps({'type': 'citations', 'citations': result.get('citations', [])})}\n\n"
-            yield f"data: {json.dumps({'type': 'stats',     'stats':     result.get('stats', {})})}\n\n"
-            if result.get('sentiment'):
-                yield f"data: {json.dumps({'type': 'sentiment', 'sentiment': result['sentiment']})}\n\n"
-            if result.get('sentiments'):
-                yield f"data: {json.dumps({'type': 'sentiments', 'sentiments': result['sentiments']})}\n\n"
-            yield f"data: {json.dumps({'type': 'done',      'validation_passed': result.get('validation_passed', False)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'validation_passed': True})}\n\n"
 
         except Exception as e:
             _req_status = "error"
@@ -420,8 +411,8 @@ async def chat_stream(request: Request):
                         validation_ms=_validation_ms,
                         status=_req_status,
                     )
-                except Exception:
-                    pass
+                except Exception as log_err:
+                    logger.warning("Failed to log chat request: %s", log_err)
 
     return StreamingResponse(
         event_stream(),
