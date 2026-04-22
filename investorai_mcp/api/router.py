@@ -287,8 +287,9 @@ async def chat_endpoint(request: Request):
 ### ---LLM Validation -------------------------------
 
 @router.post("/llm/validate")
-@limiter.limit("5/minute")
+@limiter.limit("3/minute")
 async def validate_llm_key(request: Request):
+    import asyncio
     body = await request.json()
     api_key = body.get("api_key")
     model = body.get("model", "claude-sonnet-4-20250514")
@@ -299,7 +300,7 @@ async def validate_llm_key(request: Request):
                 "MISSING_KEY",
                 "api_key is required."),
         )
-        
+
     try:
         import litellm
         response = await litellm.acompletion(
@@ -310,11 +311,12 @@ async def validate_llm_key(request: Request):
         )
         return {"valid": True, "model": model}
     except Exception as e:
+        await asyncio.sleep(1)  # slow enumeration attempts
         return JSONResponse(
             status_code=400,
             content = make_error(
                 "LLM_KEY_INVALID",
-                f"API key validation failed: {str(e)}",
+                "API key validation failed.",
             ),
         )
         

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -6,6 +7,8 @@ from sqlalchemy import select
 
 from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
+
+logger = logging.getLogger(__name__)
 from investorai_mcp.db.cache_manager import CacheManager, TTL_SECONDS
 from investorai_mcp.db.models import CacheMetadata, NewsArticle
 from investorai_mcp.llm.litellm_client import lf_span
@@ -119,12 +122,21 @@ async def get_news(
             is_stale = meta is None or meta.is_stale or age_hours >= ttl_hours
 
             if is_stale:
-                #fetch live and store
-                rows = await _fetch_and_store_news(symbol, session)
-
-                #update cache metadata
-                cache_meta = await manager._get_or_create_meta(symbol, "news")
-                await manager._update_meta_success(cache_meta, provider="yfinance")
+                try:
+                    rows = await _fetch_and_store_news(symbol, session)
+                    cache_meta = await manager._get_or_create_meta(symbol, "news")
+                    await manager._update_meta_success(cache_meta, provider="yfinance")
+                except Exception as e:
+                    logger.warning("News fetch failed for %s, falling back to cache: %s", symbol, e)
+                    stmt = (
+                        select(NewsArticle)
+                        .where(NewsArticle.symbol == symbol)
+                        .order_by(NewsArticle.published_at.desc())
+                        .limit(limit)
+                    )
+                    result = await session.execute(stmt)
+                    rows = list(result.scalars().all())
+                    result.close()
             else:
                 #serve from DB
                 stmt = (

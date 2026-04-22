@@ -155,16 +155,14 @@ class CacheManager:
     async def _get_or_create_meta(
         self, symbol: str, data_type: str
     ) -> CacheMetadata:
-        stmt = select(CacheMetadata).where(
-            CacheMetadata.symbol == symbol,
-            CacheMetadata.data_type == data_type,
-        )
-        result = await self._session.execute(stmt)
-        meta = result.scalar_one_or_none()
-        result.close()
+        from investorai_mcp.db import database_url
+        insert = _get_insert(database_url)
 
-        if meta is None:
-            meta = CacheMetadata(
+        # Upsert — on_conflict_do_nothing prevents duplicate rows under concurrent requests.
+        # UniqueConstraint("symbol", "data_type") already exists on the table.
+        stmt = (
+            insert(CacheMetadata)
+            .values(
                 symbol=symbol,
                 data_type=data_type,
                 ttl_seconds=TTL_SECONDS[data_type],
@@ -172,10 +170,19 @@ class CacheManager:
                 fetch_count=0,
                 error_count=0,
             )
-            self._session.add(meta)
-            await self._session.commit()
-            await self._session.refresh(meta)
-            
+            .on_conflict_do_nothing(index_elements=["symbol", "data_type"])
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()
+
+        result = await self._session.execute(
+            select(CacheMetadata).where(
+                CacheMetadata.symbol == symbol,
+                CacheMetadata.data_type == data_type,
+            )
+        )
+        meta = result.scalar_one()
+        result.close()
         return meta
     
     ############# Private: read --------------------------

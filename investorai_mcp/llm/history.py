@@ -13,6 +13,7 @@ still get answered, just without compression.
 
 This trade off - never sacrifice correctness for cost optiomization.
 """
+import asyncio
 import logging
 
 from investorai_mcp.llm.litellm_client import call_llm
@@ -65,15 +66,18 @@ async def compress_history(
         if m['role'] in ("user", "assistant") 
     )
     try:
-        summary = await call_llm(
-            messages = [
-                {"role": "system", "content": _SUMMARY_PROMPT},
-                {"role": "user", "content": f"Summarise the following conversation history: \n\n{older_text}"},
-            ],
-            session_hash=session_hash,
-            tool_name="history_compressor",
-            max_tokens=200,
-            api_key=api_key,
+        summary = await asyncio.wait_for(
+            call_llm(
+                messages=[
+                    {"role": "system", "content": _SUMMARY_PROMPT},
+                    {"role": "user", "content": f"Summarise the following conversation history: \n\n{older_text}"},
+                ],
+                session_hash=session_hash,
+                tool_name="history_compressor",
+                max_tokens=200,
+                api_key=api_key,
+            ),
+            timeout=15,
         )
         
         compressed = [

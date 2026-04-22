@@ -130,11 +130,21 @@ async def get_sentiment(
             clean = raw.strip().replace("```json", "").replace("```", "").strip()
             sentiment_data = json.loads(clean)
 
+        except (json.JSONDecodeError, ValueError) as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Sentiment JSON parse failed for %s: %s | raw: %r", symbol, e, clean if 'clean' in dir() else raw
+            )
+            return {
+                "error": True,
+                "code": "LLM_RESPONSE_INVALID",
+                "message": "Sentiment analysis returned invalid JSON.",
+            }
         except Exception as e:
             return {
                 "error": True,
                 "code": "LLM_UNAVAILABLE",
-                "message": f"Sentiment Analysis failed: {e}"
+                "message": f"Sentiment analysis failed: {e}",
             }
 
         # Build citations from articles used
