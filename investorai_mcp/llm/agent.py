@@ -508,7 +508,7 @@ async def run_agent_loop(
         # No tool calls — LLM has final answer, stream it word by word
         if not msg.tool_calls:
             final_text = msg.content or ""
-            words = final_text.split(" ")
+            words = [w for w in final_text.split(" ") if w]
             for i, word in enumerate(words):
                 yield {"type": "token", "content": word + (" " if i < len(words) - 1 else "")}
             async for event in _emit_side_events(collected_tool_results):

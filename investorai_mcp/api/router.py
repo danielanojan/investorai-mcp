@@ -377,8 +377,9 @@ async def chat_stream(request: Request):
 
             from investorai_mcp.llm.agent import run_agent_loop
 
+            _key_token = (api_key or "anonymous")[:16]
             session_hash = hashlib.sha256(
-                f"{symbol}{datetime.now(UTC).date()}".encode()
+                f"{_key_token}{symbol}{datetime.now(UTC).date()}".encode()
             ).hexdigest()[:16]
 
             _got_response = False
@@ -403,7 +404,8 @@ async def chat_stream(request: Request):
         except Exception as e:
             _req_status = "error"
             _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            logger.exception("Chat stream error for symbol=%s: %s", symbol, e)
+            yield f"data: {json.dumps({'type': 'error', 'message': 'An error occurred. Please try again.'})}\n\n"
 
         finally:
             if _total_ms > 0:
