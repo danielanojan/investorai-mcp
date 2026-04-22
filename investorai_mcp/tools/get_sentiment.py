@@ -95,10 +95,8 @@ async def get_sentiment(
         if not articles:
             return {
                 "error": True,
-                "sentiment": "neutral",
-                "score": 0,
-                "message": f"No news articles found for {symbol}. Sentiment is neutral by default.",
-                "citations": []
+                "code": "NO_NEWS",
+                "message": f"No news articles found for {symbol}. Fetch news first with get_news.",
             }
 
         # build headlines block with citations.
