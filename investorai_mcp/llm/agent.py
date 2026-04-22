@@ -146,9 +146,10 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_price_history",
             "description": (
-                "Return daily OHLCV price history for a supported stock. "
+                "Return daily price history for a supported stock. "
                 "Use adj_close for trend analysis — adjusted for splits and dividends. "
-                "Use when you need the full price series, not just summary stats."
+                "Use when you need the actual price series, not just summary stats. "
+                "Always set limit=52 or less — returning thousands of raw price points wastes context."
             ),
             "parameters": {
                 "type": "object",
@@ -166,6 +167,10 @@ TOOL_SCHEMAS = [
                         "type": "string",
                         "enum": ["adj_close", "close", "avg_price"],
                         "description": "Price field to return. Default: 'adj_close'.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max price points to return, evenly sampled. Use 52 for yearly trends, 30 for monthly. Default 0 = all points (avoid for LLM use).",
                     },
                 },
                 "required": ["ticker_symbol"],

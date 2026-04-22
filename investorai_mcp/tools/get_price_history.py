@@ -37,7 +37,8 @@ async def get_price_history(
     ticker_symbol: str,
     range: Literal["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"] = "1Y",
     price_type: Literal["adj_close", "close", "avg_price"] = "adj_close",
-    ctx : Context | None = None,   
+    limit: int = 0,
+    ctx : Context | None = None,
 ) -> dict:
     """
     Return daily price history for a supported stock ticker. 
@@ -92,7 +93,13 @@ async def get_price_history(
                 "hint": "Try again in few seconds - a background fetch is in progress."
             }
 
-        prices = [_format_price(row, price_type) for row in result.data]
+        all_prices = [_format_price(row, price_type) for row in result.data]
+        if limit > 0 and len(all_prices) > limit:
+            # Evenly sample across the full range to preserve trend shape
+            step = len(all_prices) / limit
+            prices = [all_prices[int(i * step)] for i in range(limit)]
+        else:
+            prices = all_prices
 
         #compute summary statistics
         price_values = [p["price"] for p in prices]
