@@ -1,8 +1,8 @@
 """Global pytest configuration and fixtures."""
 
+import sqlalchemy.ext.asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine as original_create_async_engine
-import sqlalchemy.ext.asyncio
 
 #SQLite has foreign keys disabled by default - In tests, ifyou could insert a PriceHistory row referencing a non existant ticket
 # and SQLite would silently allow it - this is bad as it can hide bugs. 
@@ -33,9 +33,9 @@ def create_async_engine_with_fk(*args, **kwargs):
                 cursor = dbapi_conn.cursor()
                 cursor.execute("PRAGMA foreign_keys=ON")
                 cursor.close()
-            except Exception:
+            except Exception:  # noqa: S110
                 pass
-    except Exception:
+    except Exception:  # noqa: S110
         pass
     
     return engine

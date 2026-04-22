@@ -17,11 +17,11 @@ from pathlib import Path
 
 sys.path.insert(0, ".")
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from investorai_mcp.config import settings
-from investorai_mcp.db.models import PriceHistory, Ticker
+from investorai_mcp.db.models import PriceHistory
 from investorai_mcp.stocks import SUPPORTED_TICKERS
 
 OUTPUT_PATH = Path("tests/evals/qa_pairs.json")
@@ -96,7 +96,7 @@ async def generate_pairs(count: int = 200) -> list[dict]:
             if attempts > target * 5:
                 break
             attempts += 1
-            symbol = random.choice(symbols)
+            symbol = random.choice(symbols)  # noqa: S311
             result = await get_random_price(session, symbol)
             if not result:
                 continue
