@@ -128,8 +128,8 @@ def create_app():
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origins,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "X-LLM-API-Key"],
     )
 
     # Rate limiting
