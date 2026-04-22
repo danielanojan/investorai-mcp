@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 #here the env is loaded and validated.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(

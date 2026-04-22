@@ -8,6 +8,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
+
 def make_error(code: str, message: str, detail: str = "") -> dict:
     return {
         "error": {

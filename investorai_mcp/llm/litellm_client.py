@@ -6,10 +6,10 @@ Handles: BYOK routing, Langfuse tracing, llm_usage_log writing,
 error handling and token counting
 """
 
-import time
-import logging
 import contextlib
-from datetime import datetime, timezone
+import logging
+import time
+from datetime import UTC, datetime
 
 import litellm
 from litellm import acompletion
@@ -86,7 +86,7 @@ async def _log_usage(
             tokens_out=tokens_out,
             latency_ms=latency_ms,
             status=status,
-            ts = datetime.now(timezone.utc),
+            ts = datetime.now(UTC),
         )
         session.add(entry)
         await session.commit()

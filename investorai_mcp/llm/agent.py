@@ -365,7 +365,6 @@ Do not make one tool call per turn. Return all tool_calls at once — they execu
 
 async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
     """Execute one tool call and return (tool_call_id, result_json)."""
-    import asyncio as _asyncio
     tool_name = tc.function.name
 
     # Return parse error directly — don't call tool with empty args
@@ -385,7 +384,7 @@ async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
     try:
         result = await _dispatch(tool_name, tool_args, api_key)
         return tc.id, json.dumps(result, default=str)
-    except _asyncio.TimeoutError as e:
+    except TimeoutError:
         logger.warning("Tool %s timed out", tool_name)
         return tc.id, json.dumps({
             "error": True, "code": "TIMEOUT",
@@ -432,8 +431,8 @@ async def run_agent_loop(
     # to tool_calls on the raw response object. call_llm is a text-only convenience
     # wrapper around _call_llm_raw. Both paths share the same Langfuse tracing and
     # DB usage logging — observability is identical.
-    from investorai_mcp.llm.litellm_client import _call_llm_raw
     from investorai_mcp.llm.history import compress_history, count_tokens_approx
+    from investorai_mcp.llm.litellm_client import _call_llm_raw
 
     messages: list[dict] = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
     if history:

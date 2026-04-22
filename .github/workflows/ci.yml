@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+jobs:
+  test:
+    name: Lint · Type-check · Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      # ── Lint ────────────────────────────────────────────────────────────
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      # ── Type check ──────────────────────────────────────────────────────
+      - name: Type check (mypy)
+        run: uv run mypy investorai_mcp/
+        continue-on-error: true   # mypy is strict=false — warn, don't block yet
+
+      # ── Security scan ───────────────────────────────────────────────────
+      - name: Security scan (bandit)
+        run: uv run bandit -r investorai_mcp/ -ll -q
+        continue-on-error: true   # informational until baseline is clean
+
+      # ── Unit tests + coverage gate ───────────────────────────────────────
+      - name: Unit tests
+        run: >
+          uv run pytest tests/unit/
+          --cov=investorai_mcp
+          --cov-report=term-missing
+          --cov-report=xml
+          --cov-fail-under=80
+          -q
+
+      # ── Upload coverage to summary ───────────────────────────────────────
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7

@@ -1,7 +1,9 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from fastmcp import Context
-from investorai_mcp.db import AsyncSessionLocal
+
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
+from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
@@ -55,7 +57,7 @@ async def refresh_ticker(
         }
 
     #rate limit check
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     last_time = _last_refresh.get(symbol)
     
     if last_time is not None:

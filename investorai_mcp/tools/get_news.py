@@ -1,20 +1,18 @@
 import logging
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import UTC, datetime
 
 from fastmcp import Context
 from sqlalchemy import select
 
-from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
+from investorai_mcp.db import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
-from investorai_mcp.db.cache_manager import CacheManager, TTL_SECONDS
+from investorai_mcp.db.cache_manager import TTL_SECONDS, CacheManager
 from investorai_mcp.db.models import CacheMetadata, NewsArticle
 from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
-
 
 _adapter: YFinanceAdapter | None = None
 
@@ -42,7 +40,7 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     # Replace all existing news for this symbol so stale/blank rows don't linger.
     await session.execute(delete(NewsArticle).where(NewsArticle.symbol == symbol))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for record in valid_records:
         session.add(NewsArticle(
             symbol=symbol,

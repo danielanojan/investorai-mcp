@@ -6,8 +6,7 @@ import os
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from investorai_mcp.config import settings
 
@@ -74,6 +73,7 @@ def _run_alembic_upgrade() -> None:
     """Run alembic migrations syncronously (called from async context via executor)"""
     import os
     from pathlib import Path
+
     from sqlalchemy.exc import OperationalError
     
     # Get the project root (two levels up from this file)

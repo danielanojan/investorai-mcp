@@ -1,12 +1,12 @@
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "003"
-down_revision: Union[str, None] = "002"
-branch_labels: Union[Sequence[str], None] = None
-depends_on: Union[str, None] = None
+down_revision: str | None = "002"
+branch_labels: Sequence[str] | None = None
+depends_on: str | None = None
 
 
 def upgrade() -> None:

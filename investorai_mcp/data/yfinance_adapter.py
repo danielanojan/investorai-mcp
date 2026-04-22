@@ -5,7 +5,7 @@ from functools import partial
 import pandas as pd
 import yfinance as yf
 
-from investorai_mcp.data.base import(
+from investorai_mcp.data.base import (
     DataProviderAdapter,
     NewsRecord,
     OHLCVRecord,
@@ -169,7 +169,7 @@ class YFinanceAdapter(DataProviderAdapter):
                     url=url,
                     published_at=published_at,
                 ))
-            except Exception:
+            except Exception:  # noqa: S112
                 continue
                 
         return records

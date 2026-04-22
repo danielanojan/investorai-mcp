@@ -1,4 +1,5 @@
 from fastmcp import Context
+
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS
 

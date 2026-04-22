@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Generic, TypeVar
 
 from sqlalchemy import select, update
@@ -192,7 +192,6 @@ class CacheManager:
     async def _read_prices(
         self, symbol: str, period: str
     ) -> list[PriceHistory]:
-        from datetime import date, timedelta
         
         cutoff = self._period_to_cutoff(period)
         stmt = (
@@ -216,7 +215,7 @@ class CacheManager:
             async with _global_write_lock:  # global: serialise all SQLite writes
                 try:
                     await asyncio.wait_for(self._refresh_prices(symbol, meta), timeout=30)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.error("Price refresh timed out for %s after 30s", symbol)
 
     async def _refresh_prices(
@@ -259,7 +258,7 @@ class CacheManager:
                 avg_price=record.avg_price,
                 volume=record.volume,
                 split_factor=record.split_factor,
-                fetched_at=datetime.now(timezone.utc)
+                fetched_at=datetime.now(UTC)
             )
             stmt = stmt.on_conflict_do_update(
                 index_elements = ["symbol", "date"],
@@ -281,12 +280,12 @@ class CacheManager:
             update(CacheMetadata)
             .where(CacheMetadata.id == meta.id)
             .values(
-                last_fetched=datetime.now(timezone.utc),
+                last_fetched=datetime.now(UTC),
                 is_stale=False,
                 fetch_count=CacheMetadata.fetch_count + 1,
                 error_count = 0,
                 provider_used=provider, 
-                updated_at=datetime.now(timezone.utc)
+                updated_at=datetime.now(UTC)
             )
         )
         await self._session.commit()
@@ -298,7 +297,7 @@ class CacheManager:
             .where(CacheMetadata.id == meta.id)
             .values(
                 error_count=CacheMetadata.error_count + 1,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
         )
         await self._session.commit()
@@ -310,8 +309,8 @@ class CacheManager:
         if last_fetched is None:
             return float("inf")
         if last_fetched.tzinfo is None:
-            last_fetched = last_fetched.replace(tzinfo=timezone.utc)
-        delta = datetime.now(timezone.utc) - last_fetched
+            last_fetched = last_fetched.replace(tzinfo=UTC)
+        delta = datetime.now(UTC) - last_fetched
         return delta.total_seconds() / 3600
     
     @staticmethod

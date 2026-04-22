@@ -8,42 +8,40 @@ Auto-detects time range from natural language questions.
 """
 import hashlib
 import time as _time
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from fastmcp import Context
 
 from investorai_mcp.llm.citations import extract_citations
 from investorai_mcp.llm.history import compress_history
-from investorai_mcp.llm.litellm_client import call_llm, get_langfuse, lf_span
+from investorai_mcp.llm.litellm_client import call_llm, lf_span
 from investorai_mcp.llm.prompt_builder import build_prompt, compute_stats
-from investorai_mcp.llm.validator import validate_response, validate_multi_response
+from investorai_mcp.llm.validator import validate_multi_response, validate_response
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS, is_supported
-
-from investorai_mcp.tools.get_price_history import get_price_history
 from investorai_mcp.tools.get_news import get_news
-from investorai_mcp.tools.get_stock_info import get_stock_info
+from investorai_mcp.tools.get_price_history import get_price_history
 from investorai_mcp.tools.get_sentiment import get_sentiment
-from investorai_mcp.tools.utils import (
-    PriceCacheResult,
-    cache_result_from_price,
-    news_rows_from_result,
-)
+from investorai_mcp.tools.get_stock_info import get_stock_info
+from investorai_mcp.tools.get_system_info import handle_meta_question
 from investorai_mcp.tools.parse_question import (
-    detect_symbols,
-    detect_sector,
-    detect_range,
     detect_duration,
+    detect_range,
+    detect_sector,
+    detect_symbols,
+    extract_date_context,
     is_all_stocks_question,
     is_news_question,
     range_for_date,
-    resolve_relative_date,
     resolve_absolute_date,
     resolve_date_range,
-    extract_date_context,
+    resolve_relative_date,
 )
-from investorai_mcp.tools.get_system_info import handle_meta_question
+from investorai_mcp.tools.utils import (
+    cache_result_from_price,
+    news_rows_from_result,
+)
 
 
 def _lf_span(name: str, as_type: str = "span", **kwargs):
@@ -393,7 +391,7 @@ async def get_trend_summary(
 
     # Compress history once (shared across all symbol calls)
     session_hash = hashlib.sha256(
-        f"{'_'.join(symbols)}{datetime.now(timezone.utc).date()}".encode()
+        f"{'_'.join(symbols)}{datetime.now(UTC).date()}".encode()
     ).hexdigest()[:16]
 
     import asyncio as _asyncio
@@ -516,7 +514,7 @@ async def get_trend_summary(
         # Build one combined data block and a single LLM prompt.
         # For large comparisons (>10 symbols) use a compact one-liner per stock
         # so 50 stocks don't blow the context window.
-        from investorai_mcp.llm.prompt_builder import SYSTEM_PROMPT, COT_SYSTEM_PROMPT
+        from investorai_mcp.llm.prompt_builder import COT_SYSTEM_PROMPT, SYSTEM_PROMPT
         _name_map = {sym: info["name"] for sym, info in SUPPORTED_TICKERS.items()}
         _sector_map = {sym: info["sector"] for sym, info in SUPPORTED_TICKERS.items()}
         if len(all_stats) > 10:

@@ -7,7 +7,7 @@ an overall sentiment with source citations
 """
 import hashlib
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastmcp import Context
 from sqlalchemy import select
@@ -106,7 +106,7 @@ async def get_sentiment(
             for a in articles
         )
         session_hash = hashlib.sha256(
-            f"{symbol}{datetime.now(timezone.utc).date()}sentiment".encode()
+            f"{symbol}{datetime.now(UTC).date()}sentiment".encode()
         ).hexdigest()[:16]
 
         #Call LLM for sentiment analysis

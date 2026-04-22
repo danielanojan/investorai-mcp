@@ -1,16 +1,14 @@
-from datetime import date
 from typing import Literal
 
-from fastmcp import Context 
+from fastmcp import Context
 
-from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
+from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.db.models import PriceHistory
 from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
-from investorai_mcp.stocks import is_supported 
-
+from investorai_mcp.stocks import is_supported
 
 _adapter: YFinanceAdapter | None = None
 

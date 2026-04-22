@@ -1,5 +1,4 @@
 from fastmcp import Context
-from sqlalchemy import select
 
 from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.models import Ticker

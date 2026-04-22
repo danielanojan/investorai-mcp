@@ -12,7 +12,7 @@ result available to any MCP client that wants to inspect question
 understanding before fetching data.
 """
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS
@@ -192,7 +192,7 @@ def resolve_relative_date(question: str) -> date | None:
         "sunday": 6, "sun": 6,
     }
     q = question.lower()
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
 
     if re.search(r'\btoday\b', q):
         return today
@@ -278,7 +278,7 @@ def detect_duration(question: str) -> tuple[date, date] | None:
     """
     from datetime import timedelta
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     q = question.lower()
 
     m = re.search(
@@ -379,7 +379,7 @@ def resolve_date_range(question: str) -> tuple[date, date] | None:
 
 def range_for_date(target: date) -> str:
     """Return the smallest supported range shortcode that covers the target date."""
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     delta = (today - target).days
     if delta <= 7:       return "1W"
     if delta <= 31:      return "1M"
@@ -428,7 +428,7 @@ async def parse_question(question: str) -> dict:
         date_context:   human-readable date context string or None
         today:          today's UTC date (ISO string)
     """
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
 
     # Symbol detection
     detected_symbols = detect_symbols(question)

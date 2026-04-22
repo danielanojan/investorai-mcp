@@ -51,12 +51,12 @@ async def test_unsupported_ticker_returns_error():
     
 async def test_no_articles_return_neutral():
     from investorai_mcp.tools.get_sentiment import get_sentiment
-    
+
     p1, p2 = patch_sentiment([])
     with p1, p2:
         result = await get_sentiment("AAPL")
-    assert result["sentiment"] == "neutral"
-    assert result["score"] == 0
+    assert result["error"] is True
+    assert result["code"] == "NO_NEWS"
     
 async def test_positive_sentiment_returned():
     from investorai_mcp.tools.get_sentiment import get_sentiment

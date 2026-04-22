@@ -10,13 +10,12 @@ as the MCP tools
 import logging
 import math
 import time as _time
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from investorai_mcp.api.error_handler import make_error
@@ -52,7 +51,7 @@ async def _log_chat_request(
                 llm_ms=llm_ms,
                 validation_ms=validation_ms,
                 status=status,
-                ts=datetime.now(timezone.utc),
+                ts=datetime.now(UTC),
             ))
             await session.commit()
         except Exception:
@@ -307,14 +306,14 @@ async def validate_llm_key(request: Request):
 
     try:
         import litellm
-        response = await litellm.acompletion(
-            model = model,
-            messages = [{"role": "user", "content": "Hello, world!"}],
-            api_key = api_key,
-            max_tokens = 5,
+        await litellm.acompletion(
+            model=model,
+            messages=[{"role": "user", "content": "Hello, world!"}],
+            api_key=api_key,
+            max_tokens=5,
         )
         return {"valid": True, "model": model}
-    except Exception as e:
+    except Exception:
         await asyncio.sleep(1)  # slow enumeration attempts
         return JSONResponse(
             status_code=400,
@@ -328,8 +327,6 @@ async def validate_llm_key(request: Request):
 @limiter.limit("20/minute")
 async def chat_stream(request: Request):
     import json
-    import asyncio
-    from fastapi.responses import StreamingResponse
 
     # Read API key from header — never stored, used per-request only
     api_key = request.headers.get("X-LLM-API-Key")
@@ -376,11 +373,12 @@ async def chat_stream(request: Request):
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
             import hashlib
-            from datetime import datetime, timezone
+            from datetime import datetime
+
             from investorai_mcp.llm.agent import run_agent_loop
 
             session_hash = hashlib.sha256(
-                f"{symbol}{datetime.now(timezone.utc).date()}".encode()
+                f"{symbol}{datetime.now(UTC).date()}".encode()
             ).hexdigest()[:16]
 
             _got_response = False
@@ -439,12 +437,10 @@ async def chat_stream(request: Request):
 @router.get("/monitoring/db")
 async def monitoring_db(request: Request):
     """Data health stats from local SQLite DB."""
-    from sqlalchemy import func, select, text
+    from sqlalchemy import func, select
+
     from investorai_mcp.db import AsyncSessionLocal
-    from investorai_mcp.db.models import (
-        CacheMetadata, LLMUsageLog, PriceHistory, EvalLog
-    )
-    from investorai_mcp.stocks import SUPPORTED_TICKERS
+    from investorai_mcp.db.models import CacheMetadata, EvalLog, LLMUsageLog, PriceHistory
 
     async with AsyncSessionLocal() as session:
 
@@ -463,12 +459,12 @@ async def monitoring_db(request: Request):
         # Stale tickers
         stale_count = (await session.execute(
             select(func.count()).select_from(CacheMetadata)
-            .where(CacheMetadata.is_stale == True)
+            .where(CacheMetadata.is_stale.is_(True))
         )).scalar()
 
         # LLM usage today
-        from datetime import datetime, timezone, timedelta
-        today_start = datetime.now(timezone.utc).replace(
+        from datetime import datetime, timedelta
+        today_start = datetime.now(UTC).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         llm_today = (await session.execute(
@@ -484,7 +480,7 @@ async def monitoring_db(request: Request):
         )).one()
 
         # LLM usage last 7 days
-        week_start = datetime.now(timezone.utc) - timedelta(days=7)
+        week_start = datetime.now(UTC) - timedelta(days=7)
         llm_week = (await session.execute(
             select(
                 func.count().label("total"),
@@ -504,7 +500,7 @@ async def monitoring_db(request: Request):
         eval_passed = (await session.execute(
             select(func.count()).select_from(EvalLog)
             .where(EvalLog.ts >= week_start)
-            .where(EvalLog.pass_fail == "PASS")
+            .where(EvalLog.pass_fail == "PASS")  # noqa: S105
         )).scalar() or 0
 
         # Provider breakdown
@@ -586,8 +582,9 @@ async def monitoring_db(request: Request):
 @router.get("/monitoring/langfuse")
 async def monitoring_langfuse(request: Request):
     """Fetch recent traces from Langfuse API."""
-    from investorai_mcp.config import settings
     import httpx
+
+    from investorai_mcp.config import settings
 
     if not settings.langfuse_public_key or not settings.langfuse_secret_key:
         return JSONResponse(
@@ -668,6 +665,7 @@ async def monitoring_latency(request: Request):
     threshold computed from all recorded calls.
     """
     from sqlalchemy import select
+
     from investorai_mcp.db import AsyncSessionLocal
     from investorai_mcp.db.models import ChatRequestLog
 

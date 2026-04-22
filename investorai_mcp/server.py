@@ -60,17 +60,18 @@ mcp = FastMCP(
 #regular def - no await inside its just imports
 def _register_tools():
     """import all tool modules so their @mcp.tool() decorators fire"""
-    from investorai_mcp.tools import search_ticker    # noqa: F401
-    from investorai_mcp.tools import get_stock_info   # noqa: F401
-    from investorai_mcp.tools import get_price_history # noqa: F401
-    from investorai_mcp.tools import get_daily_summary # noqa: F401
-    from investorai_mcp.tools import get_cache_status  # noqa: F401
-    from investorai_mcp.tools import refresh_ticker     # noqa: F401
-    from investorai_mcp.tools import get_news
-    from investorai_mcp.tools import get_trend_summary    # noqa: F401
-    from investorai_mcp.tools import get_sentiment        # noqa: F401
-    from investorai_mcp.tools import parse_question       # noqa: F401
-    from investorai_mcp.tools import get_system_info      # noqa: F401
+    from investorai_mcp.tools import (
+        get_cache_status,  # noqa: F401
+        get_daily_summary,  # noqa: F401
+        get_price_history,  # noqa: F401
+        get_sentiment,  # noqa: F401
+        get_stock_info,  # noqa: F401
+        get_system_info,  # noqa: F401
+        get_trend_summary,  # noqa: F401
+        parse_question,  # noqa: F401
+        refresh_ticker,  # noqa: F401
+        search_ticker,  # noqa: F401
+    )
     
 async def _start_mcp_stdio() -> None:
     logger.info("Starting MCP server", transport="stdio")
@@ -95,13 +96,14 @@ async def _start_mcp_http() -> None:
 
 def create_app():
     from contextlib import asynccontextmanager
+    from pathlib import Path
+
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
     from slowapi.errors import RateLimitExceeded
     from slowapi.middleware import SlowAPIMiddleware
-    from pathlib import Path
 
     from investorai_mcp.api.error_handler import rate_limit_handler
     from investorai_mcp.api.rate_limit import limiter

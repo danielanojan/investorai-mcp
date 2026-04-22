@@ -14,7 +14,6 @@ Design principles:
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import date
 
 from investorai_mcp.llm.prompt_builder import PriceSummaryStats
 
