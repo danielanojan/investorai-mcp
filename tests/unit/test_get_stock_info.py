@@ -1,11 +1,12 @@
 
-from unittest import result
 
-import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine    
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from investorai_mcp.db.models import Base, Ticker
+
 
 @pytest.fixture(autouse=True)
 async def register_tools():

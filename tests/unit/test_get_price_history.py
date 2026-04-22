@@ -1,9 +1,8 @@
-from datetime import date, datetime, timezone
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from investorai_mcp.data.base import OHLCVRecord
 from investorai_mcp.db.cache_manager import CacheResult
 from investorai_mcp.db.models import PriceHistory
 

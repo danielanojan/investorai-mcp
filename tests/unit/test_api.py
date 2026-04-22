@@ -3,9 +3,11 @@
 Tests for the FastAPI BFF endpoints
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
-from httpx import AsyncClient, ASGITransport
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+
 
 @pytest.fixture
 def app():

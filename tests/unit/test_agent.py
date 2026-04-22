@@ -9,11 +9,8 @@ Module-level names in agent.py patch at:
   _dispatch        → investorai_mcp.llm.agent._dispatch
   _TOKEN_HARD_LIMIT / _TOKEN_WARN_LIMIT → investorai_mcp.llm.agent.*
 """
-import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
 
 # ---------------------------------------------------------------------------
 # Patch paths
@@ -176,7 +173,7 @@ async def test_max_iterations_yields_error_token():
 # ---------------------------------------------------------------------------
 
 async def test_token_hard_limit_aborts_loop():
-    from investorai_mcp.llm.agent import run_agent_loop, _TOKEN_HARD_LIMIT
+    from investorai_mcp.llm.agent import _TOKEN_HARD_LIMIT, run_agent_loop
 
     mock_llm = AsyncMock()
     with patch(_LLM_RAW, new=mock_llm), \
@@ -191,7 +188,7 @@ async def test_token_hard_limit_aborts_loop():
 
 
 async def test_token_warn_limit_continues():
-    from investorai_mcp.llm.agent import run_agent_loop, _TOKEN_WARN_LIMIT
+    from investorai_mcp.llm.agent import _TOKEN_WARN_LIMIT, run_agent_loop
 
     response = _make_response("Answer.")
     with patch(_LLM_RAW, new=AsyncMock(return_value=response)), \
@@ -228,7 +225,7 @@ async def test_execute_tool_call_timeout_returns_retryable_error():
 
     tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL"})
 
-    with patch(_DISPATCH, new=AsyncMock(side_effect=asyncio.TimeoutError())):
+    with patch(_DISPATCH, new=AsyncMock(side_effect=TimeoutError())):
         call_id, result_str = await _execute_tool_call(tc, api_key=None)
 
     result = json.loads(result_str)

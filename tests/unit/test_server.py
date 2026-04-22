@@ -1,4 +1,3 @@
-import pytest
 
 def test_mcp_instance_created():
     from investorai_mcp.server import mcp
@@ -6,7 +5,7 @@ def test_mcp_instance_created():
     assert mcp.name == "investorai"
     
 async def test_tools_register_without_error():
-    from investorai_mcp.server import mcp, _register_tools
+    from investorai_mcp.server import _register_tools, mcp
     _register_tools()
     
     tools = await mcp.list_tools()

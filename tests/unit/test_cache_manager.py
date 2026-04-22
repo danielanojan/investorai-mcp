@@ -1,13 +1,11 @@
-from curses import meta
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from litellm import cache
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from investorai_mcp.data.base import OHLCVRecord
-from investorai_mcp.db.cache_manager import CacheManager, CacheResult, TTL_SECONDS
+from investorai_mcp.db.cache_manager import TTL_SECONDS, CacheManager, CacheResult
 from investorai_mcp.db.models import Base, CacheMetadata, PriceHistory, Ticker
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -101,12 +99,12 @@ def test_age_hours_none_returns_infinity():
     assert age == float("inf")
     
 def test_age_hours_recent_is_small():
-    recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+    recent_time = datetime.now(UTC) - timedelta(minutes=30)
     age = CacheManager._age_hours(recent_time)
     assert 0.4 <age < 0.6  # Should be around 0.5 hours
 
 def test_age_hours_old_is_large():
-    old_time = datetime.now(timezone.utc) - timedelta(hours=25)
+    old_time = datetime.now(UTC) - timedelta(hours=25)
     age = CacheManager._age_hours(old_time)
     assert age > 24 # Should be greater than 24 hours
     

@@ -7,8 +7,9 @@ because alembic reads alembic.ini from disk
 import os
 
 import pytest
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import create_async_engine
+
 
 def make_db_url(path: str) -> str:
     return f"sqlite+aiosqlite:///{path}"

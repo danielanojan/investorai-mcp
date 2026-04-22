@@ -1,9 +1,10 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from investorai_mcp.db.models import NewsArticle
+
 
 @pytest.fixture(autouse=True)
 def register_tools():
@@ -16,7 +17,7 @@ def make_article(headline="AAPL beats earnings", source="Reuters",
     article = MagicMock(spec=NewsArticle)
     article.headline = headline
     article.source = source
-    article.published_at =  datetime(2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc)
+    article.published_at =  datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
     article.ai_summary = ai_summary
     article.sentiment_score = sentiment_score
     return article
@@ -65,7 +66,7 @@ async def test_returns_articles_list():
     #simulate fresh cache meta so we read from DB
     meta = MagicMock()
     meta.is_stale = False
-    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=timezone.utc)
+    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=UTC)
     
     with patch_session_with_articles(articles, meta=meta):
         result = await get_news("AAPL", limit = 5)
@@ -79,7 +80,7 @@ async def test_article_fields_present():
     articles = [make_article()]
     meta = MagicMock()
     meta.is_stale = False
-    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=timezone.utc)
+    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=UTC)
     with patch_session_with_articles(articles, meta=meta):
         result = await get_news("AAPL", limit=1)
     article = result["articles"][0]
@@ -93,7 +94,7 @@ async def test_limit_clamped_to_50():
     articles = [make_article(f"headline {i}") for i in range(50)]
     meta = MagicMock()
     meta.is_stale = False
-    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=timezone.utc)
+    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=UTC)
     
     with patch_session_with_articles(articles, meta=meta):
         result = await get_news("AAPL", limit=9999)
@@ -105,7 +106,7 @@ async def test_empty_result_returns_gracefully():
     
     meta = MagicMock()
     meta.is_stale = False
-    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=timezone.utc)
+    meta.last_fetched = datetime(2026, 3, 28, 11, 0, 0, tzinfo=UTC)
     
     with patch_session_with_articles([], meta=meta):
         result = await get_news("AAPL", limit=5)

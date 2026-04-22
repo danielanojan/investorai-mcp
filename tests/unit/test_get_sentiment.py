@@ -1,11 +1,12 @@
 """Test for the get_sentiment MCP tool"""
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 import json
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from investorai_mcp.db.models import NewsArticle
+
 
 @pytest.fixture(autouse=True)
 def register_tools():
@@ -18,7 +19,7 @@ def make_article(headline="Apple beats earnings", source="Reuters",
     article.headline = headline
     article.source = source
     article.url = url
-    article.published_at = datetime(2026, 3, 28, tzinfo=timezone.utc)
+    article.published_at = datetime(2026, 3, 28, tzinfo=UTC)
     return article
 
 def patch_sentiment(articles, llm_response=None):

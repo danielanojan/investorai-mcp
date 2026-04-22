@@ -7,7 +7,6 @@ from investorai_mcp.llm.prompt_builder import PriceSummaryStats
 from investorai_mcp.llm.validator import (
     IDK_RESPONSE,
     TOLERANCE_PCT,
-    Violation,
     extract_numbers,
     validate_response,
 )

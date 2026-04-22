@@ -1,9 +1,10 @@
-from investorai_mcp.stocks import(
+from investorai_mcp.stocks import (
     SUPPORTED_SYMBOLS,
     SUPPORTED_TICKERS,
     get_ticker_info,
     is_supported,
 )
+
 
 def test_exactly_50_tickers():
     assert len(SUPPORTED_TICKERS) == 50

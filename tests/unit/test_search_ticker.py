@@ -1,5 +1,6 @@
 import pytest
 
+
 #pytest decorator - automatically applies a fixture to every test in the scope/ file. No need to explicitly pass it as a paramter. 
 #pytest.fixture - instead of repeating the setup code every time - you define it as a fixture and inject into all the tests which need it. 
 @pytest.fixture(autouse=True)

@@ -1,10 +1,11 @@
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest 
+import pytest
 
 from investorai_mcp.db.cache_manager import CacheResult
 from investorai_mcp.db.models import PriceHistory
+
 
 @pytest.fixture(autouse=True)
 def register_tools():

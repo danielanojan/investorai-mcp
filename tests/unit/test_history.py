@@ -1,6 +1,6 @@
 """Unit test for chat history compressor."""
 from unittest.mock import AsyncMock, patch
-import pytest
+
 
 def make_messages(n: int) -> list[dict]:
     "Generate n alternating user/asistant messages."
@@ -35,7 +35,7 @@ async def test_exactly_5_messages_returned_unchanged():
     
 async def test_long_history_compressed_to_summary():
     """More than 5 messages - should compress older messages into a summary."""
-    from investorai_mcp.llm.history import compress_history, EXPLICIT_WINDOW
+    from investorai_mcp.llm.history import EXPLICIT_WINDOW, compress_history
     
     messages =  make_messages(10)
     
@@ -48,7 +48,7 @@ async def test_long_history_compressed_to_summary():
     
 async def test_last_5_messages_preserved_verbatim():
     """ The last EXPLICIT_WINDOW messages must be identical to originals."""
-    from investorai_mcp.llm.history import compress_history, EXPLICIT_WINDOW
+    from investorai_mcp.llm.history import EXPLICIT_WINDOW, compress_history
     
     messages = make_messages(10)
     last_5 = messages[-EXPLICIT_WINDOW:]

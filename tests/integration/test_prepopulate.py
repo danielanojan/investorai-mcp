@@ -1,16 +1,15 @@
 #integration test for pre-population script
 
-import os
 from datetime import date
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from investorai_mcp.data.base import OHLCVRecord
-from investorai_mcp.db.models import Base, PriceHistory, Ticker, CacheMetadata
-from investorai_mcp.stocks import SUPPORTED_TICKERS 
+from investorai_mcp.db.models import Base, CacheMetadata, PriceHistory, Ticker
+from investorai_mcp.stocks import SUPPORTED_TICKERS
 
 
 def make_ohlcv(symbol="AAPL", d=None, price=174.0):
@@ -55,7 +54,6 @@ def mock_adapter():
 ################# Tests for populate.py #################
 
 async def test_populate_ticker_creates_ticker_row(mem_session, mock_adapter):
-    from investorai_mcp.db.cache_manager import CacheManager
     from scripts.prepopulate import populate_ticker
     
     ok, count = await populate_ticker("AAPL", mem_session, mock_adapter, dry_run=False)

@@ -1,10 +1,11 @@
 """ Tests for the refresh ticker MCP tool"""
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from investorai_mcp.db.cache_manager import CacheResult
+
 
 @pytest.fixture(autouse=True)
 def register_tools():
@@ -14,7 +15,7 @@ def register_tools():
 @pytest.fixture(autouse=True)
 def clear_rate_limit():
     """Reset in-memory rate limit dict before every test"""
-    import investorai_mcp.tools.refresh_ticker as rt 
+    import investorai_mcp.tools.refresh_ticker as rt
     rt._last_refresh.clear()
     yield
     rt._last_refresh.clear()
@@ -80,11 +81,11 @@ async def test_rate_limit_blocks_second_call():
     assert "retry_after_seconds" in result
     
 async def test_rate_limit_allows_after_window():
-    from investorai_mcp.tools.refresh_ticker import refresh_ticker
     import investorai_mcp.tools.refresh_ticker as rt
+    from investorai_mcp.tools.refresh_ticker import refresh_ticker
     
     #simulate last refresh was 6 minutes ago
-    rt._last_refresh["AAPL"] = (datetime.now(timezone.utc) - timedelta(seconds=360))
+    rt._last_refresh["AAPL"] = (datetime.now(UTC) - timedelta(seconds=360))
     
     p1, p2, _ = patch_manager()
     with p1, p2:

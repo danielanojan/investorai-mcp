@@ -8,8 +8,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import AsyncClient, ASGITransport
-
+from httpx import ASGITransport, AsyncClient
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -381,7 +380,7 @@ async def test_langfuse_not_configured_returns_503(client):
 async def test_langfuse_http_host_rejected(client):
     with patch("investorai_mcp.config.settings") as mock_settings:
         mock_settings.langfuse_public_key = "pk-test"
-        mock_settings.langfuse_secret_key = "sk-test"
+        mock_settings.langfuse_secret_key = "sk-test"  # noqa: S105
         mock_settings.langfuse_host = "http://insecure.langfuse.com"
         response = await client.get("/api/monitoring/langfuse")
     assert response.status_code == 400
@@ -393,8 +392,9 @@ async def test_langfuse_http_host_rejected(client):
 # ---------------------------------------------------------------------------
 
 async def test_latency_endpoint_empty_db(client):
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
     from investorai_mcp.db.models import Base
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
