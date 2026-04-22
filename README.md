@@ -1,16 +1,19 @@
 # 📈 InvestorAI MCP
 
-AI-native stock research MCP server for retail investors — 11 tools, BYOK AI chat with SSE streaming, sentiment analysis, and a React playground dashboard.
+AI-native stock research MCP server for retail investors — 11 tools, BYOK AI chat with SSE streaming, agentic ReAct loop, sentiment analysis, and a React playground dashboard.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![FastMCP](https://img.shields.io/badge/FastMCP-2.0+-green)
+![Tests](https://img.shields.io/badge/tests-389%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-83%25-green)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 ---
 
 InvestorAI MCP gives AI assistants structured, grounded access to price history, news, and sentiment for 50 curated blue-chip stocks across 5 sectors. All data comes from a local SQLite cache (or PostgreSQL in production), keeping responses fast and offline-capable. The LLM layer is fully BYOK — bring your own Anthropic, OpenAI, or Groq key. Nothing is ever stored server-side.
 
-## Feature
+## Features
+
 - **Price History** — Daily OHLCV data for 50 stocks, 7 time ranges (1W → 5Y), adjusted close with split/dividend correction
 - **Stock Profiles** — Company name, sector, exchange, market cap for every supported ticker
 - **News Feed** — Latest headlines cached from yfinance, refreshed on demand
@@ -19,13 +22,16 @@ InvestorAI MCP gives AI assistants structured, grounded access to price history,
 - **Semantic Ticker Search** — Fuzzy search by company name, product keyword, or exact symbol (no embeddings required)
 - **Natural Language Dates** — Understands "yesterday", "last Wednesday", "May 2023 to January 2025", "last 54 days"
 - **BYOK AI Chat** — Bring your own API key (Claude, OpenAI, Groq) — keys stored in browser localStorage only, sent per-request in a header, never persisted server-side
-- **SSE Streaming** — Token-by-token response streaming via Server-Sent Events, with live citation and sentiment injection
+- **Agentic ReAct Loop** — LLM drives all tool orchestration; calls primitive tools in parallel, reasons over results, writes its own narrative
+- **SSE Streaming** — Token-by-token response streaming with live thinking indicator, citation injection, and sentiment events
+- **Live Thinking Indicator** — Frontend shows which tools the agent is calling in real time as it reasons
 - **Response Validation** — Configurable strict / warm-only LLM output validation, skipped automatically for news-focused queries
 - **Playground Dashboard** — DB health, cache status, Langfuse traces, and latency percentiles in a single React pane
 - **Langfuse Observability** — Optional LLM tracing, token counting, and latency monitoring with direct trace links
 - **Smart Cache** — Stale-while-available with background refresh; `refresh_ticker` for on-demand live pulls
 - **MCP Server** — 11 tools via FastMCP, streamable HTTP + stdio for Claude Desktop / Claude Code / VS Code / Cursor
 - **Rate Limiting** — SlowAPI-backed per-minute limiting, configurable per deployment
+- **CI/CD Pipeline** — GitHub Actions with lint, type-check, security scan, CVE audit, secrets scan, and 80% coverage gate
 
 ## Supported Universe
 
@@ -199,9 +205,6 @@ claude mcp add investorai --transport http http://localhost:8000/mcp
 
 Try asking: *"How has NVDA performed over the last year compared to AMD?"*
 
-## Sequence diagram — BYOK chat with agentic ReAct loop
-
-
 ## Available MCP Tools
 
 | Tool | Description |
@@ -238,7 +241,7 @@ The FastAPI BFF layer serves the React frontend. The same internal service funct
 | POST | `/stocks/{symbol}/trend` | AI trend summary (non-streaming) |
 | POST | `/chat` | BYOK chat (non-streaming) |
 | POST | `/chat/stream` | BYOK chat with SSE streaming |
-| POST | `/llm/validate` | Validate an LLM response against price stats |
+| POST | `/llm/validate` | Validate an LLM API key |
 | GET | `/monitoring/db` | DB health, cache stats, row counts |
 | GET | `/monitoring/langfuse` | Langfuse traces and latency |
 | GET | `/monitoring/latency` | Request latency percentiles |
@@ -249,10 +252,14 @@ The `/chat/stream` endpoint emits the following Server-Sent Events:
 
 | Event type | Payload | Description |
 |---|---|---|
-| `start` | `{ symbol: string }` | Stream opened |
-| `token` | `{ content: string }` | Incremental response word |
-| `done` | `{ validation_passed: bool }` | Stream complete |
-| `error` | `{ message: string }` | Stream-level error |
+| `start` | `{ symbol }` | Stream opened |
+| `thinking` | `{ tools: string[], iteration: number }` | Agent is calling these tools on this iteration |
+| `token` | `{ content }` | Incremental response word — thinking phase is over |
+| `citations` | `{ citations: Citation[] }` | Source references extracted from tool results |
+| `sentiment` | `{ sentiment: SentimentResult }` | Sentiment for a single stock query |
+| `sentiments` | `{ sentiments: Record<symbol, SentimentResult> }` | Sentiment for multi-stock queries |
+| `done` | — | Stream complete |
+| `error` | `{ message }` | Stream-level error (generic message — details logged server-side) |
 
 ## Architecture Overview
 
@@ -270,14 +277,14 @@ InvestorAI is a Python/FastAPI backend with a React + Vite + Tailwind frontend. 
 **Data flow — BYOK chat (`/api/chat/stream`):**
 1. User question + BYOK key arrive at the SSE endpoint
 2. **Agent ReAct loop** (`llm/agent.py`) sends the question to the LLM with 10 primitive tool schemas
-3. LLM decides which tools to call — can return multiple tool calls in one turn
-4. All tool calls in a turn execute concurrently via `asyncio.gather`
-5. Results fed back to LLM; loop repeats until LLM produces a final text response
-6. Final text streamed token-by-token as SSE events
+3. LLM decides which tools to call — can return multiple tool calls in one turn (parallel execution via `asyncio.gather`)
+4. A `thinking` SSE event is emitted immediately so the frontend shows which tools are running
+5. Tool results are collected and fed back to the LLM; loop repeats until LLM produces a final text response
+6. Final text streamed token-by-token; `citations` and `sentiment`/`sentiments` events emitted before `done`
 
 **Database:** SQLite with aiosqlite (default) or PostgreSQL via asyncpg. Alembic handles schema migrations. Railway's PostgreSQL addon is detected automatically via the `DATABASE_URL` environment variable.
 
-**Frontend:** React 18 + Vite, Tailwind CSS. Components include `PriceChart`, `NewsFeed`, `StatsCard`, `ChatPanel` (with `SentimentBadge` + `SentimentBlock`), `TickerSelector`, `BYOKSetup`, and `MonitoringDashboard`. API keys are stored in browser localStorage only — never sent to the server outside of request headers.
+**Frontend:** React 18 + Vite, Tailwind CSS. Components include `PriceChart`, `NewsFeed`, `StatsCard`, `ChatPanel` (with live thinking indicator, `SentimentBadge` + `SentimentBlock`), `TickerSelector`, `BYOKSetup`, and `MonitoringDashboard`. API keys are stored in browser localStorage only — never sent to the server outside of request headers.
 
 ## Playground Dashboard
 
@@ -289,7 +296,7 @@ The `/` route serves the React playground — a unified interface for stock rese
 - **Price Chart** — Interactive OHLCV chart with configurable time range
 - **Stats Card** — Period return, high/low, volatility, trading days
 - **News Feed** — Latest headlines with source links
-- **AI Chat Panel** — BYOK chat that streams token-by-token; shows inline sentiment badges (▲ positive / ▼ negative / ● neutral) with reasoning and key themes
+- **AI Chat Panel** — BYOK chat with SSE streaming; shows live thinking indicator (which tools the agent is calling), inline sentiment badges (▲ positive / ▼ negative / ● neutral), and source citations
 
 ### Monitoring Dashboard
 
@@ -301,54 +308,53 @@ Accessible from the playground header:
 
 Langfuse sections are hidden gracefully when keys are not configured.
 
-## Architectural Decisions
+## CI/CD Pipeline
 
-| Decision | Approach | Rationale |
+GitHub Actions runs on every push and pull request to `dev` and `main`:
+
+| Step | Tool | Gate |
 |---|---|---|
-| 50-stock curated universe | Hardcoded in `stocks.py` | Eliminates hallucinated tickers. Every response is grounded in supported symbols. `search_ticker` bridges natural language to exact symbols |
-| Cache-first, refresh-on-demand | SQLite cache with TTL + `refresh_ticker` | Keeps p95 latency under 200ms for price lookups. LLM latency dominates; DB is never the bottleneck |
-| LiteLLM as LLM gateway | Unified API for Claude, OpenAI, Groq | Single tool-calling implementation supports all major providers — swap `LLM_PROVIDER` without code changes |
-| Response validation | Compare LLM numbers against DB stats | Catches hallucinated return percentages and price levels. Skipped for news-focused queries where article prices are legitimately different from DB |
-| Citation extraction | Inline markers stripped post-generation | Lets the LLM cite sources naturally in its response; structured citation objects are returned separately for UI rendering |
-| News-focused path | Parallel `get_news` + `get_sentiment` | Sentiment enriches the prompt before the LLM runs, so the summary reflects pre-scored headlines rather than asking the LLM to score and summarise in one pass |
-| Multi-stock via concurrent gather | `asyncio.gather` per symbol | Parallelises DB reads and sentiment calls for comparison queries; scales to full sector queries (~14 stocks) without sequential latency stacking |
-| SSE streaming (final-response only) | Full tool-calling loop server-side, only LLM tokens streamed | Avoids complex partial-stream / tool-call interleaving. Tool status goes to structured fields; final reply streams token-by-token |
-| BYOK security model | API keys in browser localStorage | Keys never touch the server at rest — sent per-request in `X-LLM-API-Key` header, never logged, never persisted |
-| FastMCP dual transport | Streamable HTTP (`/mcp`) + stdio mode | HTTP for remote/web clients, stdio for local desktop clients (Claude Desktop) |
-| Langfuse opt-in via `lf_span` | Context manager, no-op when unconfigured | Zero overhead in deployments without Langfuse keys — same code path, observability added by setting two env vars |
-| SQLite default, PostgreSQL optional | Detected via `DATABASE_URL` | Zero-config local development. Railway's PostgreSQL addon is a one-click upgrade for production |
+| Secret scan | gitleaks (full history) | Warn |
+| Lint | ruff | **Hard block** |
+| Type check | mypy | Warn (graduating to hard) |
+| Security scan | bandit | Warn |
+| Dependency CVE audit | pip-audit | Warn |
+| Unit tests + coverage | pytest `--cov-fail-under=80` | **Hard block** |
+| Coverage artifact | actions/upload-artifact | Always uploaded |
 
-## Data Sources
+The `secrets` job runs in parallel with the `test` job — no dependency install needed, faster feedback on secret leaks.
 
-| Source | Data | Key required | Method |
-|---|---|---|---|
-| Yahoo Finance (yfinance) | OHLCV price history, news headlines, company info | None | HTTP (cached to SQLite) |
-| Alpha Vantage | Price history (alternative) | `ALPHA_VANTAGE_KEY` | HTTP (on-demand) |
-| Polygon.io | Price history (alternative) | `POLYGON_KEY` | HTTP (on-demand) |
-| LiteLLM | LLM routing — Claude, OpenAI, Groq | `LLM_API_KEY` (BYOK) | HTTP (per chat request) |
-| Langfuse | LLM observability + trace analytics | `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` | OTEL callbacks + REST reads |
-
-> yfinance is the default and requires no API key. Alternative providers are hot-swappable via `DATA_PROVIDER` without changing any tool code.
+Coverage gate is also enforced locally via `pyproject.toml` addopts, so `uv run pytest` fails below 80% everywhere.
 
 ## Development
 
 ### Setup
 
 ```bash
-git clone https://github.com/your-username/investorai-mcp.git
+git clone https://github.com/danielanojan/investorai-mcp.git
 cd investorai-mcp
-uv sync                  # install all dependencies including dev
-cp .env.example .env     # add your API keys
-pre-commit install       # ruff, black, gitleaks hooks
+uv sync --group dev     # install all dependencies including dev
+cp .env.example .env    # add your API keys
 ```
 
 ### Run tests
 
 ```bash
-uv run pytest                        # full suite (346 tests)
-uv run pytest --cov=investorai_mcp   # with coverage report
-uv run pytest tests/unit/            # unit tests only
+uv run pytest tests/unit/                          # unit tests only (389 tests)
+uv run pytest tests/unit/ --cov=investorai_mcp     # with coverage report
+uv run pytest                                       # full suite
 ```
+
+Coverage gate: 80% minimum enforced both locally and in CI.
+
+### Lint
+
+```bash
+uv run ruff check .           # check
+uv run ruff check . --fix     # auto-fix
+```
+
+Always run lint clean before committing.
 
 ### Start dev server
 
@@ -378,9 +384,42 @@ frontend/
     ├── components/     # React UI — ChatPanel, PriceChart, MonitoringDashboard…
     └── hooks/          # useChat (SSE), useBYOK
 tests/
-├── unit/               # Per-tool unit tests with mocked DB and LLM
-└── integration/        # End-to-end API tests
+├── unit/               # 389 tests, 83% coverage — tools, agent loop, router, models
+└── evals/              # Eval pairs for offline LLM quality benchmarking
+.github/
+└── workflows/
+    └── ci.yml          # Lint · Type · Security · CVE · Tests · Secrets
 ```
+
+## Architectural Decisions
+
+| Decision | Approach | Rationale |
+|---|---|---|
+| 50-stock curated universe | Hardcoded in `stocks.py` | Eliminates hallucinated tickers. Every response grounded in supported symbols. `search_ticker` bridges natural language to exact symbols |
+| ReAct agentic loop | LLM drives tool orchestration via `tool_calls` | LLM reasons about what to fetch, skips unnecessary tools, calls multiple tools per turn in parallel |
+| Cache-first, refresh-on-demand | SQLite cache with TTL + `refresh_ticker` | p95 latency under 200ms for price lookups. LLM latency dominates; DB is never the bottleneck |
+| LiteLLM as LLM gateway | Unified API for Claude, OpenAI, Groq | Single tool-calling implementation supports all major providers — swap `LLM_PROVIDER` without code changes |
+| BYOK security model | API keys in browser localStorage only | Keys never touch the server at rest — sent per-request in `X-LLM-API-Key` header, never logged, never persisted. Request-scoped, never written to global state |
+| SSE event types | `thinking`, `token`, `citations`, `sentiment`, `done` | Frontend reflects every phase: which tools are running, when writing starts, what sources were used |
+| Token budget in agent loop | Hard abort at 180k tokens, warn at 150k | Prevents silent context truncation and runaway LLM costs on broad queries |
+| Session hash includes api_key | First 16 chars of key hashed with symbol+date | Different users get distinct Langfuse sessions — api_key is the only user signal in a BYOK system |
+| Error sanitization | `logger.exception()` server-side, generic message to client | Internal details (stack traces, DB strings, provider errors) never reach the browser |
+| SQLite default, PostgreSQL optional | Detected via `DATABASE_URL` | Zero-config local development. Railway's PostgreSQL addon is a one-click upgrade for production |
+| Per-symbol + global write lock | Two-layer asyncio locking + WAL mode | Per-symbol lock prevents duplicate refreshes; global lock serialises SQLite writes; WAL provides OS-level retry safety |
+| FastMCP dual transport | Streamable HTTP (`/mcp`) + stdio mode | HTTP for remote/web clients, stdio for local desktop clients (Claude Desktop) |
+| Langfuse opt-in via `lf_span` | Context manager, no-op when unconfigured | Zero overhead in deployments without Langfuse keys — same code path, observability added by setting two env vars |
+
+## Data Sources
+
+| Source | Data | Key required | Method |
+|---|---|---|---|
+| Yahoo Finance (yfinance) | OHLCV price history, news headlines, company info | None | HTTP (cached to SQLite) |
+| Alpha Vantage | Price history (alternative) | `ALPHA_VANTAGE_KEY` | HTTP (on-demand) |
+| Polygon.io | Price history (alternative) | `POLYGON_KEY` | HTTP (on-demand) |
+| LiteLLM | LLM routing — Claude, OpenAI, Groq | `LLM_API_KEY` (BYOK) | HTTP (per chat request) |
+| Langfuse | LLM observability + trace analytics | `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` | OTEL callbacks + REST reads |
+
+> yfinance is the default and requires no API key. Alternative providers are hot-swappable via `DATA_PROVIDER` without changing any tool code.
 
 ## Roadmap
 
@@ -395,23 +434,30 @@ tests/
 | Natural language date parsing | ✅ Done |
 | AI sentiment analysis | ✅ Done |
 | BYOK AI chat with SSE streaming | ✅ Done |
+| Agentic ReAct loop for BYOK chat | ✅ Done |
+| Live thinking indicator (which tools are running) | ✅ Done |
+| Citations + sentiment SSE events | ✅ Done |
 | Playground dashboard | ✅ Done |
 | Langfuse observability | ✅ Done |
 | Response validation (hallucination guard) | ✅ Done |
+| Unit test suite (389 tests, 83% coverage) | ✅ Done |
+| CI/CD pipeline (lint, type, security, CVE, secrets, coverage) | ✅ Done |
 | Claude Desktop MCP integration | ✅ Tested |
 | Claude Code MCP integration | ✅ Tested |
 | Railway deployment (PostgreSQL) | ✅ Done |
-| Agentic ReAct loop for BYOK chat | ✅ Done |
-| VS Code + GitHub Copilot MCP integration |🔜 Planned |
-| Cursor MCP integration | 🔜 Planned|
-| RAG to capture relevant historical news articles | 🔜 Planned|
-| Historical price explanations using past news articles | 🔜 Planned|
-| LLM evaluation scripts (offline prompt benchmarking, hallucination rate scoring) | 🔜 Planned |
+| tenacity retries on yfinance adapter | 🔜 Planned |
+| `asyncio.timeout` on `/chat/stream` | 🔜 Planned |
+| Real health check (DB ping + LLM reachability) | 🔜 Planned |
+| Structured JSON logging | 🔜 Planned |
+| Integration tests | 🔜 Planned |
+| VS Code + GitHub Copilot MCP integration | 🔜 Planned |
+| Cursor MCP integration | 🔜 Planned |
+| RAG for historical news context | 🔜 Planned |
+| LLM evaluation suite (offline hallucination scoring) | 🔜 Planned |
 | Real-time quotes (WebSocket) | 🔜 Planned |
 | Earnings calendar integration | 🔜 Planned |
 | Expand universe beyond 50 stocks | 🔮 Future |
 | Technical indicators (RSI, MACD, Bollinger) | 🔮 Future |
-
 
 ## Contributing
 
@@ -419,7 +465,7 @@ InvestorAI MCP is open source under the Apache 2.0 license. Contributions are we
 
 - 🐛 **Bug reports** — Open an issue with reproduction steps
 - 💡 **Feature requests** — Suggest ideas via GitHub Issues
-- 🔧 **Pull requests** — Especially welcome in:
+- 🔧 **Pull requests** — Especially welcome for:
   - Additional data provider adapters
   - New MCP tools
   - Test coverage improvements
