@@ -6,10 +6,8 @@ Then builds the LLM prompt. Raw OHLCV rows never
 enter the LLM context - only pre-computed statistics. 
 """
 
-import statistics 
+import statistics
 from dataclasses import dataclass
-from datetime import date 
-from typing import Optional 
 
 from investorai_mcp.db.models import NewsArticle, PriceHistory
 
@@ -107,7 +105,7 @@ def compute_stats(
     symbol: str,
     period: str,
     rows: list[PriceHistory],
-) -> Optional[PriceSummaryStats]:
+) -> PriceSummaryStats | None:
     """
     Compute PriceSummaryStats from a list of PriceHistory rows. 
     Returns None if rows is empty

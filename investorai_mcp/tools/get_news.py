@@ -1,25 +1,32 @@
-from datetime import datetime, timezone
-from typing import Literal
+import logging
+from datetime import UTC, datetime
 
 from fastmcp import Context
 from sqlalchemy import select
 
-from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
-from investorai_mcp.db.cache_manager import CacheManager, TTL_SECONDS
+from investorai_mcp.db import AsyncSessionLocal
+
+logger = logging.getLogger(__name__)
+from investorai_mcp.db.cache_manager import TTL_SECONDS, CacheManager
 from investorai_mcp.db.models import CacheMetadata, NewsArticle
 from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
+_adapter: YFinanceAdapter | None = None
 
-_adapter = YFinanceAdapter()
+def _get_adapter() -> YFinanceAdapter:
+    global _adapter
+    if _adapter is None:
+        _adapter = YFinanceAdapter()
+    return _adapter
 
 async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     """Fetch news from yfinance and write to DB. Returns stored news"""
     from sqlalchemy import delete
 
-    records = await _adapter.fetch_news(symbol, limit=50)
+    records = await _get_adapter().fetch_news(symbol, limit=50)
     if not records:
         return []
 
@@ -33,7 +40,7 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     # Replace all existing news for this symbol so stale/blank rows don't linger.
     await session.execute(delete(NewsArticle).where(NewsArticle.symbol == symbol))
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for record in valid_records:
         session.add(NewsArticle(
             symbol=symbol,
@@ -99,7 +106,7 @@ async def get_news(
         
     with lf_span("get_news", input={"symbol": symbol, "limit": limit}):
         async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _adapter)
+            manager = CacheManager(session, _get_adapter())
             await manager.ensure_ticker_exists(symbol)
 
             #check if we have cached news and whether its fresh.
@@ -119,12 +126,21 @@ async def get_news(
             is_stale = meta is None or meta.is_stale or age_hours >= ttl_hours
 
             if is_stale:
-                #fetch live and store
-                rows = await _fetch_and_store_news(symbol, session)
-
-                #update cache metadata
-                cache_meta = await manager._get_or_create_meta(symbol, "news")
-                await manager._update_meta_success(cache_meta, provider="yfinance")
+                try:
+                    rows = await _fetch_and_store_news(symbol, session)
+                    cache_meta = await manager._get_or_create_meta(symbol, "news")
+                    await manager._update_meta_success(cache_meta, provider="yfinance")
+                except Exception as e:
+                    logger.warning("News fetch failed for %s, falling back to cache: %s", symbol, e)
+                    stmt = (
+                        select(NewsArticle)
+                        .where(NewsArticle.symbol == symbol)
+                        .order_by(NewsArticle.published_at.desc())
+                        .limit(limit)
+                    )
+                    result = await session.execute(stmt)
+                    rows = list(result.scalars().all())
+                    result.close()
             else:
                 #serve from DB
                 stmt = (

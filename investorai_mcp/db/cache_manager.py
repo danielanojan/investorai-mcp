@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Generic, TypeVar
 
 from sqlalchemy import select, update
@@ -19,6 +19,23 @@ from investorai_mcp.data.base import DataProviderAdapter, OHLCVRecord
 from investorai_mcp.db.models import CacheMetadata, PriceHistory, Ticker
 
 logger = logging.getLogger(__name__)
+
+# Per-symbol locks — prevent duplicate refreshes for the same ticker.
+# setdefault is used instead of if-not-in/assign to prevent a race where two
+# coroutines both pass the membership check before either inserts a lock.
+# Two coroutines can both evaluate asyncio.Lock() as the default argument, but
+# dict.setdefault is atomic in CPython — only the first caller's lock is stored,
+# and both callers receive the same lock object back. No separate locks are created.
+_refresh_locks: dict[str, asyncio.Lock] = {}
+
+def _refresh_lock(symbol: str) -> asyncio.Lock:
+    return _refresh_locks.setdefault(symbol, asyncio.Lock())
+
+# Global write lock — SQLite has one file-level write lock regardless of symbol.
+# When 50 tickers refresh concurrently (e.g. agent loop broad query), all try to
+# write the same file. This serialises writes at the Python level before they
+# reach SQLite, avoiding "database is locked" errors.
+_global_write_lock = asyncio.Lock()
 
 T = TypeVar("T")
 
@@ -80,9 +97,16 @@ class CacheManager:
         #If stale — this is the clever part. It returns the old data immediately so the user isn't waiting, then kicks off a background refresh task. 
         # The next request will get fresh data. This is the classic stale-while-revalidate pattern — prioritise speed over freshness.
         rows = await self._read_prices(symbol, period)
-        asyncio.create_task(
-            self._refresh_prices(symbol, meta)
-        )
+        lock = _refresh_lock(symbol)
+        if not lock.locked():
+            task = asyncio.create_task(
+                self._locked_refresh_prices(symbol, meta, lock)
+            )
+            task.add_done_callback(
+                lambda t: logger.error(
+                    "Background price refresh failed for %s: %s", symbol, t.exception()
+                ) if t.exception() else None
+            )
         return CacheResult(
             data=rows,
             is_stale=True,
@@ -134,16 +158,14 @@ class CacheManager:
     async def _get_or_create_meta(
         self, symbol: str, data_type: str
     ) -> CacheMetadata:
-        stmt = select(CacheMetadata).where(
-            CacheMetadata.symbol == symbol,
-            CacheMetadata.data_type == data_type,
-        )
-        result = await self._session.execute(stmt)
-        meta = result.scalar_one_or_none()
-        result.close()
+        from investorai_mcp.db import database_url
+        insert = _get_insert(database_url)
 
-        if meta is None:
-            meta = CacheMetadata(
+        # Upsert — on_conflict_do_nothing prevents duplicate rows under concurrent requests.
+        # UniqueConstraint("symbol", "data_type") already exists on the table.
+        stmt = (
+            insert(CacheMetadata)
+            .values(
                 symbol=symbol,
                 data_type=data_type,
                 ttl_seconds=TTL_SECONDS[data_type],
@@ -151,17 +173,25 @@ class CacheManager:
                 fetch_count=0,
                 error_count=0,
             )
-            self._session.add(meta)
-            await self._session.commit()
-            await self._session.refresh(meta)
-            
+            .on_conflict_do_nothing(index_elements=["symbol", "data_type"])
+        )
+        await self._session.execute(stmt)
+        await self._session.commit()
+
+        result = await self._session.execute(
+            select(CacheMetadata).where(
+                CacheMetadata.symbol == symbol,
+                CacheMetadata.data_type == data_type,
+            )
+        )
+        meta = result.scalar_one()
+        result.close()
         return meta
     
     ############# Private: read --------------------------
     async def _read_prices(
         self, symbol: str, period: str
     ) -> list[PriceHistory]:
-        from datetime import date, timedelta
         
         cutoff = self._period_to_cutoff(period)
         stmt = (
@@ -178,6 +208,16 @@ class CacheManager:
         return rows
     
     ####### Private : refresh --------------------------   
+    async def _locked_refresh_prices(
+        self, symbol: str, meta: CacheMetadata, lock: asyncio.Lock
+    ) -> None:
+        async with lock:                  # per-symbol: skip if already refreshing this ticker
+            async with _global_write_lock:  # global: serialise all SQLite writes
+                try:
+                    await asyncio.wait_for(self._refresh_prices(symbol, meta), timeout=30)
+                except TimeoutError:
+                    logger.error("Price refresh timed out for %s after 30s", symbol)
+
     async def _refresh_prices(
         self, symbol: str, meta: CacheMetadata
     ) -> None:
@@ -218,7 +258,7 @@ class CacheManager:
                 avg_price=record.avg_price,
                 volume=record.volume,
                 split_factor=record.split_factor,
-                fetched_at=datetime.now(timezone.utc)
+                fetched_at=datetime.now(UTC)
             )
             stmt = stmt.on_conflict_do_update(
                 index_elements = ["symbol", "date"],
@@ -240,12 +280,12 @@ class CacheManager:
             update(CacheMetadata)
             .where(CacheMetadata.id == meta.id)
             .values(
-                last_fetched=datetime.now(timezone.utc),
+                last_fetched=datetime.now(UTC),
                 is_stale=False,
                 fetch_count=CacheMetadata.fetch_count + 1,
                 error_count = 0,
                 provider_used=provider, 
-                updated_at=datetime.now(timezone.utc)
+                updated_at=datetime.now(UTC)
             )
         )
         await self._session.commit()
@@ -257,7 +297,7 @@ class CacheManager:
             .where(CacheMetadata.id == meta.id)
             .values(
                 error_count=CacheMetadata.error_count + 1,
-                updated_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(UTC),
             )
         )
         await self._session.commit()
@@ -269,8 +309,8 @@ class CacheManager:
         if last_fetched is None:
             return float("inf")
         if last_fetched.tzinfo is None:
-            last_fetched = last_fetched.replace(tzinfo=timezone.utc)
-        delta = datetime.now(timezone.utc) - last_fetched
+            last_fetched = last_fetched.replace(tzinfo=UTC)
+        delta = datetime.now(UTC) - last_fetched
         return delta.total_seconds() / 3600
     
     @staticmethod

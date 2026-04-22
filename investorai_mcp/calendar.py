@@ -12,7 +12,7 @@ being off by 1 hour twice a year has no real consequence —
 we might skip one extra refresh at market open in spring and trigger one extra at close in autumn. 
 For a cache TTL decision, that's completely acceptable.
 """
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 
 # US federal market holidays 2025-2030
 # Source: NYSE holiday calendar
@@ -94,19 +94,19 @@ class USMarketCalendar:
     def is_holiday(self, d: date | None = None) -> bool:
         """Returns True if the given date is a US market holiday. If no date is provided, uses today's date."""
         if d is None:
-            d = datetime.now(timezone.utc).date()
+            d = datetime.now(UTC).date()
         return d in _HOLIDAYS
 
     def is_weekend(self, d: date | None = None) -> bool:
         """Returns True if the given date is a weekend. If no date is provided, uses today's date."""
         if d is None:
-            d = datetime.now(timezone.utc).date()
+            d = datetime.now(UTC).date()
         return d.weekday() >= 5  # 5 = Saturday, 6 = Sunday
 
     def is_trading_day(self, d: date | None = None) -> bool:
         """Returns True if the given date is a US market trading day (not a weekend or holiday). If no date is provided, uses today's date."""
         if d is None:
-            d = datetime.now(timezone.utc).date()
+            d = datetime.now(UTC).date()
         return not self.is_weekend(d) and not self.is_holiday(d)
 
     def is_market_open(self, dt: datetime | None = None) -> bool:
@@ -120,7 +120,7 @@ class USMarketCalendar:
         """
         
         if dt is None:
-            dt = datetime.now(timezone.utc)
+            dt = datetime.now(UTC)
         
         # Convert to US Eastern Time (ET)
         et_offset = -5  # UTC-5 for simplicity, ignoring daylight saving
@@ -142,9 +142,8 @@ class USMarketCalendar:
 
     def next_market_open(self) -> date:
         """Return the next day market will open."""
-        from datetime import timedelta
 
-        d = datetime.now(timezone.utc).date() + timedelta(days=1)
+        d = datetime.now(UTC).date() + timedelta(days=1)
         while not self.is_trading_day(d):
             d += timedelta(days=1)
         return d

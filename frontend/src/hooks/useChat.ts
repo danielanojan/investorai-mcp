@@ -9,13 +9,14 @@ export interface SentimentResult {
 }
 
 export interface ChatMessage {
-  role:        'user' | 'assistant'
-  content:     string
-  citations?:  Citation[]
-  sentiment?:  SentimentResult | null
-  sentiments?: Record<string, SentimentResult> | null
-  streaming?:  boolean
-  error?:      boolean
+  role:          'user' | 'assistant'
+  content:       string
+  citations?:    Citation[]
+  sentiment?:    SentimentResult | null
+  sentiments?:   Record<string, SentimentResult> | null
+  streaming?:    boolean
+  error?:        boolean
+  thinkingTools?: string[]
 }
 
 export function useChat(symbol: string, _range: TimeRange, apiKey: string | null) {
@@ -75,6 +76,20 @@ export function useChat(symbol: string, _range: TimeRange, apiKey: string | null
           try {
             const event = JSON.parse(raw)
 
+            if (event.type === 'thinking') {
+              setMessages(prev => {
+                const updated = [...prev]
+                const last    = updated[updated.length - 1]
+                if (last.role === 'assistant') {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    thinkingTools: event.tools || [],
+                  }
+                }
+                return updated
+              })
+            }
+
             if (event.type === 'token') {
               setMessages(prev => {
                 const updated = [...prev]
@@ -82,7 +97,8 @@ export function useChat(symbol: string, _range: TimeRange, apiKey: string | null
                 if (last.role === 'assistant') {
                   updated[updated.length - 1] = {
                     ...last,
-                    content: last.content + event.content,
+                    content:       last.content + event.content,
+                    thinkingTools: undefined,
                   }
                 }
                 return updated

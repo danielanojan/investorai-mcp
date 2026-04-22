@@ -13,13 +13,11 @@ import argparse
 import asyncio
 import logging
 import sys
+import time
+
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
-import time 
-from datetime import datetime, timezone
-
-from sqlalchemy import update
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 # allow running from project root
 sys.path.insert(0, ".")
@@ -27,7 +25,6 @@ sys.path.insert(0, ".")
 from investorai_mcp.config import settings
 from investorai_mcp.db import init_db
 from investorai_mcp.db.cache_manager import CacheManager
-from investorai_mcp.db.models import CacheMetadata
 from investorai_mcp.stocks import SUPPORTED_TICKERS
 
 logging.basicConfig(

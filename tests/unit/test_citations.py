@@ -1,15 +1,14 @@
 
 """ Tests for citation extraction and source grounding"""
 
-import pytest
-from investorai_mcp.llm.citations import(
-    CitationResult, 
+from investorai_mcp.llm.citations import (
     DBCitation,
     NewsCitation,
     extract_citations,
     format_citations_as_links,
-    verify_citations_present
+    verify_citations_present,
 )
+
 
 # ---- Extract citations------------------------
 def test_extracts_db_citation():

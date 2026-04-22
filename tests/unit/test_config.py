@@ -1,6 +1,6 @@
 import pytest
-
 from pydantic import ValidationError
+
 
 def test_settings_load_defaults():
     "settings loads with all defaults when no .env overrides are present" 

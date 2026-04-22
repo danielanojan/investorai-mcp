@@ -10,7 +10,7 @@ import argparse
 import asyncio
 import math
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 
 def _percentile(sorted_values: list[int], p: float) -> int:
@@ -27,10 +27,11 @@ def _bar(value: int, max_value: int, width: int = 30) -> str:
 
 async def report(since_days: int, limit: int) -> None:
     from sqlalchemy import select
+
     from investorai_mcp.db import AsyncSessionLocal
     from investorai_mcp.db.models import ChatRequestLog
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=since_days)
+    cutoff = datetime.now(UTC) - timedelta(days=since_days)
 
     async with AsyncSessionLocal() as session:
         rows = (await session.execute(

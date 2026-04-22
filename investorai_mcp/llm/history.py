@@ -13,6 +13,7 @@ still get answered, just without compression.
 
 This trade off - never sacrifice correctness for cost optiomization.
 """
+import asyncio
 import logging
 
 from investorai_mcp.llm.litellm_client import call_llm
@@ -33,8 +34,9 @@ _SUMMARY_PROMPT = (
 
 
 async def compress_history(
-    messages: list[dict], 
-    session_hash: str = "anonymous",   
+    messages: list[dict],
+    session_hash: str = "anonymous",
+    api_key: str | None = None,
 ) -> list[dict]:
     """
     Compress chat history to reduce token usage. 
@@ -64,14 +66,18 @@ async def compress_history(
         if m['role'] in ("user", "assistant") 
     )
     try:
-        summary = await call_llm(
-            messages = [
-                {"role": "system", "content": _SUMMARY_PROMPT},
-                {"role": "user", "content": f"Summarise the following conversation history: \n\n{older_text}"},
-            ],
-            session_hash=session_hash,
-            tool_name="history_compressor",
-            max_tokens = 200, # keeping the sumamry short
+        summary = await asyncio.wait_for(
+            call_llm(
+                messages=[
+                    {"role": "system", "content": _SUMMARY_PROMPT},
+                    {"role": "user", "content": f"Summarise the following conversation history: \n\n{older_text}"},
+                ],
+                session_hash=session_hash,
+                tool_name="history_compressor",
+                max_tokens=200,
+                api_key=api_key,
+            ),
+            timeout=15,
         )
         
         compressed = [

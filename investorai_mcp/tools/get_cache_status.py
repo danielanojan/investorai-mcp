@@ -1,8 +1,8 @@
-from fastmcp import Context 
+from fastmcp import Context
 from sqlalchemy import select
 
 from investorai_mcp.db import AsyncSessionLocal
-from investorai_mcp.db.cache_manager import CacheManager, TTL_SECONDS
+from investorai_mcp.db.cache_manager import TTL_SECONDS, CacheManager
 from investorai_mcp.db.models import CacheMetadata
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported

@@ -1,12 +1,10 @@
-from datetime import date, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
-from investorai_mcp.data.base import NewsRecord, OHLCVRecord, TickerInfoRecord
+from investorai_mcp.data.base import NewsRecord, OHLCVRecord
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
-
 
 #patch is used to replace real functions with fakes. 
 

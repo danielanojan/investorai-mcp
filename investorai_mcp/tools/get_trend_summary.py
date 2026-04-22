@@ -8,42 +8,40 @@ Auto-detects time range from natural language questions.
 """
 import hashlib
 import time as _time
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Literal
 
 from fastmcp import Context
 
 from investorai_mcp.llm.citations import extract_citations
 from investorai_mcp.llm.history import compress_history
-from investorai_mcp.llm.litellm_client import call_llm, get_langfuse, lf_span
+from investorai_mcp.llm.litellm_client import call_llm, lf_span
 from investorai_mcp.llm.prompt_builder import build_prompt, compute_stats
-from investorai_mcp.llm.validator import validate_response, validate_multi_response
+from investorai_mcp.llm.validator import validate_multi_response, validate_response
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS, is_supported
-
-from investorai_mcp.tools.get_price_history import get_price_history
 from investorai_mcp.tools.get_news import get_news
-from investorai_mcp.tools.get_stock_info import get_stock_info
+from investorai_mcp.tools.get_price_history import get_price_history
 from investorai_mcp.tools.get_sentiment import get_sentiment
-from investorai_mcp.tools.utils import (
-    PriceCacheResult,
-    cache_result_from_price,
-    news_rows_from_result,
-)
+from investorai_mcp.tools.get_stock_info import get_stock_info
+from investorai_mcp.tools.get_system_info import handle_meta_question
 from investorai_mcp.tools.parse_question import (
-    detect_symbols,
-    detect_sector,
-    detect_range,
     detect_duration,
+    detect_range,
+    detect_sector,
+    detect_symbols,
+    extract_date_context,
     is_all_stocks_question,
     is_news_question,
     range_for_date,
-    resolve_relative_date,
     resolve_absolute_date,
     resolve_date_range,
-    extract_date_context,
+    resolve_relative_date,
 )
-from investorai_mcp.tools.get_system_info import handle_meta_question
+from investorai_mcp.tools.utils import (
+    cache_result_from_price,
+    news_rows_from_result,
+)
 
 
 def _lf_span(name: str, as_type: str = "span", **kwargs):
@@ -60,6 +58,7 @@ async def _analyse_one_symbol(
     resolved_date: date | None = None,
     date_range: tuple[date, date] | None = None,
     news_focus: bool = False,
+    api_key: str | None = None,
 ) -> dict:
     """Fetch data, call LLM, validate, and return summary for one symbol."""
     import asyncio as _asyncio
@@ -161,7 +160,7 @@ async def _analyse_one_symbol(
     if news_focus:
         news_result, sentiment_result = await _asyncio.gather(
             get_news(symbol, limit=10),
-            get_sentiment(symbol, limit=10),
+            get_sentiment(symbol, limit=10, api_key=api_key),
         )
     else:
         news_result = await get_news(symbol, limit=10)
@@ -203,6 +202,7 @@ async def _analyse_one_symbol(
             messages=messages,
             session_hash=session_hash,
             tool_name="get_trend_summary",
+            api_key=api_key,
         )
     except RuntimeError as e:
         return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}
@@ -264,6 +264,7 @@ async def get_trend_summary(
     question: str = "Summarise this stock's recent performance.",
     history: list[dict] | None = None,
     ctx: Context | None = None,
+    api_key: str | None = None,
 ) -> dict:
     """Generate an AI narrative summary of a stock's price trend.
 
@@ -324,6 +325,14 @@ async def get_trend_summary(
     #   2. explicit range 'May 2023 to May 2025'
     #   3. single date (relative weekday or absolute calendar date)
     date_range    = detect_duration(question) or resolve_date_range(question)
+    if date_range is not None:
+        _dr_start, _dr_end = date_range
+        if _dr_start > _dr_end:
+            return {
+                "error":   True,
+                "code":    "INVALID_DATE_RANGE",
+                "message": f"Resolved date range is invalid: start ({_dr_start}) is after end ({_dr_end}).",
+            }
     resolved_date = (
         None
         if date_range is not None
@@ -382,7 +391,7 @@ async def get_trend_summary(
 
     # Compress history once (shared across all symbol calls)
     session_hash = hashlib.sha256(
-        f"{'_'.join(symbols)}{datetime.now(timezone.utc).date()}".encode()
+        f"{'_'.join(symbols)}{datetime.now(UTC).date()}".encode()
     ).hexdigest()[:16]
 
     import asyncio as _asyncio
@@ -393,7 +402,7 @@ async def get_trend_summary(
                 get_price_history(sym, effective_range),
                 get_news(sym, limit=6),
                 get_stock_info(sym),
-                get_sentiment(sym, limit=10),
+                get_sentiment(sym, limit=10, api_key=api_key),
             )
         else:
             price_result, news_result, stock_info_result = await _asyncio.gather(
@@ -416,7 +425,7 @@ async def get_trend_summary(
             with _lf_span("compress_history",
                                  input={"history_len": len(history)}):
                 compressed_history = await compress_history(
-                    history, session_hash=session_hash
+                    history, session_hash=session_hash, api_key=api_key,
                 )
 
         # Single stock — return flat dict (backwards-compatible)
@@ -424,6 +433,7 @@ async def get_trend_summary(
             return await _analyse_one_symbol(
                 symbols[0], effective_range, final_question, session_hash,
                 compressed_history, resolved_date, date_range, news_focus,
+                api_key=api_key,
             )
 
         # Multiple stocks — fetch all data concurrently
@@ -504,7 +514,7 @@ async def get_trend_summary(
         # Build one combined data block and a single LLM prompt.
         # For large comparisons (>10 symbols) use a compact one-liner per stock
         # so 50 stocks don't blow the context window.
-        from investorai_mcp.llm.prompt_builder import SYSTEM_PROMPT, COT_SYSTEM_PROMPT
+        from investorai_mcp.llm.prompt_builder import COT_SYSTEM_PROMPT, SYSTEM_PROMPT
         _name_map = {sym: info["name"] for sym, info in SUPPORTED_TICKERS.items()}
         _sector_map = {sym: info["sector"] for sym, info in SUPPORTED_TICKERS.items()}
         if len(all_stats) > 10:
@@ -523,6 +533,17 @@ async def get_trend_summary(
             combined_data = "\n".join(_compact_line(st) for st in all_stats)
         else:
             combined_data = "\n\n".join(st.to_text() for st in all_stats)
+
+        # Hard cap on data block size — ~25k tokens leaves room for system prompt + response.
+        # At 50 stocks with compact lines this rarely triggers, but guards against future growth.
+        _MAX_DATA_CHARS = 100_000
+        if len(combined_data) > _MAX_DATA_CHARS:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "Data block truncated before LLM: %d chars -> %d (%d stocks)",
+                len(combined_data), _MAX_DATA_CHARS, len(all_stats),
+            )
+            combined_data = combined_data[:_MAX_DATA_CHARS] + "\n[Data truncated — reduce stock count for full detail]"
 
         # Suppress news for large comparisons — it adds noise without helping rank stocks
         news_block = ""
@@ -582,6 +603,7 @@ async def get_trend_summary(
                 messages=messages,
                 session_hash=session_hash,
                 tool_name="get_trend_summary",
+                api_key=api_key,
             )
         except RuntimeError as e:
             return {"error": True, "code": "LLM_UNAVAILABLE", "message": str(e)}

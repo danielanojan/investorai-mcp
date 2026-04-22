@@ -1,10 +1,11 @@
 """Tests for get_cache_status MCP tool"""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from investorai_mcp.db.models import CacheMetadata
+
 
 @pytest.fixture(autouse=True)
 def register_tools():
@@ -16,7 +17,7 @@ def make_meta(data_tyoe, is_stale=False, error_count=0,
     meta = MagicMock(spec=CacheMetadata)
     meta.data_type = data_tyoe
     meta.is_stale = is_stale
-    meta.last_fetched = datetime(2026, 3, 28, 12, 0, 0, tzinfo=timezone.utc)
+    meta.last_fetched = datetime(2026, 3, 28, 12, 0, 0, tzinfo=UTC)
     meta.ttl_seconds = 86400
     meta.fetch_count = fetch_count
     meta.error_count = error_count

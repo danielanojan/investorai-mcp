@@ -85,7 +85,8 @@ async def verify_pair(session, pair: dict) -> tuple[bool, str]:
         except ValueError:
             return False, f"expected not a percentage: {expected}"
 
-        from datetime import date as date_type, timedelta
+        from datetime import date as date_type
+        from datetime import timedelta
         cutoff = date_type.today() - timedelta(days=365)
         stmt = (
             select(PriceHistory)
@@ -157,7 +158,7 @@ async def main(fix: bool = False):
 
     await engine.dispose()
 
-    print(f"\nResults:")
+    print("\nResults:")
     print(f"  Verified correct:      {correct}")
     print(f"  Wrong (needs fix):     {wrong}")
     print(f"  Needs manual review:   {needs_manual}")

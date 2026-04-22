@@ -1,6 +1,8 @@
 """ Test for LiteLLM weapper. """
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 
 @pytest.fixture
 def mock_response():
@@ -105,7 +107,8 @@ async def test_langfuse_skipped_when_not_configured():
         assert not handler
 
 async def test_call_llm_rate_limit_logged():
-    import litellm as lt 
+    import litellm as lt
+
     from investorai_mcp.llm.litellm_client import call_llm
     
     with patch("investorai_mcp.llm.litellm_client.acompletion",

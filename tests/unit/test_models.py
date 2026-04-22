@@ -1,14 +1,12 @@
 import pytest
-
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from investorai_mcp.db.models import(
-    Base, 
+from investorai_mcp.db.models import (
+    Base,
     CacheMetadata,
     EvalLog,
     LLMUsageLog,
-    NewsArticle,
     PriceHistory,
     Ticker,
 )
@@ -132,6 +130,7 @@ async def test_price_history_insert(session, sample_ticker):
     
 async def test_price_history_unique_symbol_date(session, sample_ticker):
     from datetime import date
+
     from sqlalchemy.exc import IntegrityError
     
     session.add(sample_ticker)
@@ -244,7 +243,7 @@ async def test_eval_log_insert(session, sample_ticker):
         question="What was AAPL's adjusted close on 2026-03-28?",
         ai_answer="$174.00 [Source: DB • 2026-03-28]",
         ground_truth="174.00",
-        pass_fail="PASS",
+        pass_fail="PASS",  # noqa: S106
         source="eval_suite",
     )
     
@@ -253,7 +252,7 @@ async def test_eval_log_insert(session, sample_ticker):
     await session.commit()
     
     result = await session.get(EvalLog, entry.id)
-    assert result.pass_fail == "PASS"
+    assert result.pass_fail == "PASS"  # noqa: S105
     assert result.source == "eval_suite"
     
     

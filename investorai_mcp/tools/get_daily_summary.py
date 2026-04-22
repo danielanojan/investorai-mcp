@@ -1,16 +1,22 @@
-import statistics
 import builtins
-from datetime import date
+import statistics
 from typing import Literal
 
-from fastmcp import Context 
+from fastmcp import Context
+
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
 from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.cache_manager import CacheManager
-from investorai_mcp.stocks import is_supported
 from investorai_mcp.server import mcp
+from investorai_mcp.stocks import is_supported
 
-_adapter = YFinanceAdapter()
+_adapter: YFinanceAdapter | None = None
+
+def _get_adapter() -> YFinanceAdapter:
+    global _adapter
+    if _adapter is None:
+        _adapter = YFinanceAdapter()
+    return _adapter
 
 @mcp.tool()
 async def get_daily_summary(
@@ -52,7 +58,7 @@ async def get_daily_summary(
         }
         
     async with AsyncSessionLocal() as session:
-        manager = CacheManager(session, _adapter)
+        manager = CacheManager(session, _get_adapter())
         await manager.ensure_ticker_exists(symbol)
         result = await manager.get_prices(symbol, range)
     

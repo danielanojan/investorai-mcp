@@ -5,14 +5,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from investorai_mcp.db.models import PriceHistory
 from investorai_mcp.llm.prompt_builder import (
     SYSTEM_PROMPT,
-    PriceSummaryStats, 
+    PriceSummaryStats,
     build_prompt,
     compute_stats,
 )
 
-from investorai_mcp.db.models import PriceHistory
 
 def make_row(d: date, price: float,  volume: int=1_000_000):
     row = MagicMock(spec=PriceHistory)
@@ -85,7 +85,6 @@ def test_to_text_contains_return(sample_stats):
     assert "%" in text
 
 def test_to_text_under_200_tokens(sample_stats):
-    from investorai_mcp.llm.history import count_tokens_approx
     text = sample_stats.to_text()
     tokens = len(text) // 4
     assert tokens < 200
@@ -101,7 +100,7 @@ def test_build_prompt_contains_question(sample_stats):
     messages = build_prompt(sample_stats, "How is AAPL doing?")
     assert messages[-1]["role"] == "user"
     
-def test_build_prompt_contains_question(sample_stats):
+def test_build_prompt_question_in_content(sample_stats):
     question = "What was AAPL's 52-week high?"
     messages = build_prompt(sample_stats, question)
     last = messages[-1]["content"]

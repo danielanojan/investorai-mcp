@@ -2,25 +2,41 @@
 Tests for get_trend_summary MCP tool.
 Covers all helper functions and the main tool integration.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from investorai_mcp.db.cache_manager import CacheResult
 from investorai_mcp.db.models import PriceHistory
+from investorai_mcp.tools.get_system_info import handle_meta_question as _handle_meta_question
+from investorai_mcp.tools.parse_question import (
+    detect_range as _detect_range_from_question,
+)
+from investorai_mcp.tools.parse_question import (
+    detect_sector as _detect_sector_from_question,
+)
 from investorai_mcp.tools.parse_question import (
     detect_symbols as _detect_all_symbols_from_question,
-    detect_range as _detect_range_from_question,
-    detect_sector as _detect_sector_from_question,
+)
+from investorai_mcp.tools.parse_question import (
     extract_date_context as _extract_date_context,
+)
+from investorai_mcp.tools.parse_question import (
     is_news_question as _is_news_question,
+)
+from investorai_mcp.tools.parse_question import (
     range_for_date as _range_for_date,
+)
+from investorai_mcp.tools.parse_question import (
     resolve_absolute_date as _resolve_absolute_date,
+)
+from investorai_mcp.tools.parse_question import (
     resolve_date_range as _resolve_date_range,
+)
+from investorai_mcp.tools.parse_question import (
     resolve_relative_date as _resolve_relative_date,
 )
-from investorai_mcp.tools.get_system_info import handle_meta_question as _handle_meta_question
 
 
 @pytest.fixture(autouse=True)
@@ -272,7 +288,7 @@ def test_is_not_news_price_question():
 
 def test_relative_yesterday():
     result   = _resolve_relative_date("what was the price yesterday?")
-    expected = datetime.now(timezone.utc).date() - timedelta(days=1)
+    expected = datetime.now(UTC).date() - timedelta(days=1)
     assert result == expected
 
 def test_relative_last_monday():
@@ -297,7 +313,7 @@ def test_relative_last_wed_abbr():
 
 def test_relative_today():
     result   = _resolve_relative_date("what is the price today?")
-    expected = datetime.now(timezone.utc).date()
+    expected = datetime.now(UTC).date()
     assert result == expected
 
 def test_relative_none():
@@ -305,7 +321,7 @@ def test_relative_none():
 
 def test_relative_last_monday_is_past():
     result = _resolve_relative_date("price last Monday")
-    today  = datetime.now(timezone.utc).date()
+    today  = datetime.now(UTC).date()
     assert result < today
 
 
@@ -372,31 +388,31 @@ def test_date_range_start_before_end():
 # ── _range_for_date ───────────────────────────────────────────────────────
 
 def test_range_for_date_1w():
-    target = datetime.now(timezone.utc).date() - timedelta(days=3)
+    target = datetime.now(UTC).date() - timedelta(days=3)
     assert _range_for_date(target) == "1W"
 
 def test_range_for_date_1m():
-    target = datetime.now(timezone.utc).date() - timedelta(days=20)
+    target = datetime.now(UTC).date() - timedelta(days=20)
     assert _range_for_date(target) == "1M"
 
 def test_range_for_date_3m():
-    target = datetime.now(timezone.utc).date() - timedelta(days=60)
+    target = datetime.now(UTC).date() - timedelta(days=60)
     assert _range_for_date(target) == "3M"
 
 def test_range_for_date_6m():
-    target = datetime.now(timezone.utc).date() - timedelta(days=150)
+    target = datetime.now(UTC).date() - timedelta(days=150)
     assert _range_for_date(target) == "6M"
 
 def test_range_for_date_1y():
-    target = datetime.now(timezone.utc).date() - timedelta(days=300)
+    target = datetime.now(UTC).date() - timedelta(days=300)
     assert _range_for_date(target) == "1Y"
 
 def test_range_for_date_3y():
-    target = datetime.now(timezone.utc).date() - timedelta(days=700)
+    target = datetime.now(UTC).date() - timedelta(days=700)
     assert _range_for_date(target) == "3Y"
 
 def test_range_for_date_5y():
-    target = datetime.now(timezone.utc).date() - timedelta(days=1500)
+    target = datetime.now(UTC).date() - timedelta(days=1500)
     assert _range_for_date(target) == "5Y"
 
 

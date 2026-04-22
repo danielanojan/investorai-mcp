@@ -7,13 +7,15 @@ as the MCP tools
 
 """
 
+import logging
 import math
 import time as _time
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, Request
+logger = logging.getLogger(__name__)
+
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from investorai_mcp.api.error_handler import make_error
@@ -38,19 +40,23 @@ async def _log_chat_request(
     from investorai_mcp.db import AsyncSessionLocal
     from investorai_mcp.db.models import ChatRequestLog
     async with AsyncSessionLocal() as session:
-        session.add(ChatRequestLog(
-            question=question,
-            symbols=symbols,
-            range=range_,
-            total_latency_ms=total_latency_ms,
-            ttft_ms=ttft_ms,
-            db_fetch_ms=db_fetch_ms,
-            llm_ms=llm_ms,
-            validation_ms=validation_ms,
-            status=status,
-            ts=datetime.now(timezone.utc),
-        ))
-        await session.commit()
+        try:
+            session.add(ChatRequestLog(
+                question=question,
+                symbols=symbols,
+                range=range_,
+                total_latency_ms=total_latency_ms,
+                ttft_ms=ttft_ms,
+                db_fetch_ms=db_fetch_ms,
+                llm_ms=llm_ms,
+                validation_ms=validation_ms,
+                status=status,
+                ts=datetime.now(UTC),
+            ))
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 def _percentile(sorted_values: list[int], p: float) -> int:
@@ -284,8 +290,9 @@ async def chat_endpoint(request: Request):
 ### ---LLM Validation -------------------------------
 
 @router.post("/llm/validate")
-@limiter.limit("5/minute")
+@limiter.limit("3/minute")
 async def validate_llm_key(request: Request):
+    import asyncio
     body = await request.json()
     api_key = body.get("api_key")
     model = body.get("model", "claude-sonnet-4-20250514")
@@ -296,22 +303,23 @@ async def validate_llm_key(request: Request):
                 "MISSING_KEY",
                 "api_key is required."),
         )
-        
+
     try:
         import litellm
-        response = await litellm.acompletion(
-            model = model,
-            messages = [{"role": "user", "content": "Hello, world!"}],
-            api_key = api_key,
-            max_tokens = 5,
+        await litellm.acompletion(
+            model=model,
+            messages=[{"role": "user", "content": "Hello, world!"}],
+            api_key=api_key,
+            max_tokens=5,
         )
         return {"valid": True, "model": model}
-    except Exception as e:
+    except Exception:
+        await asyncio.sleep(1)  # slow enumeration attempts
         return JSONResponse(
             status_code=400,
             content = make_error(
                 "LLM_KEY_INVALID",
-                f"API key validation failed: {str(e)}",
+                "API key validation failed.",
             ),
         )
         
@@ -319,8 +327,6 @@ async def validate_llm_key(request: Request):
 @limiter.limit("20/minute")
 async def chat_stream(request: Request):
     import json
-    import asyncio
-    from fastapi.responses import StreamingResponse
 
     # Read API key from header — never stored, used per-request only
     api_key = request.headers.get("X-LLM-API-Key")
@@ -335,6 +341,16 @@ async def chat_stream(request: Request):
         return JSONResponse(
             status_code=400,
             content=make_error("MISSING_QUESTION", "question field is required."),
+        )
+
+    from investorai_mcp.config import settings
+    if not api_key and not settings.llm_api_key:
+        return JSONResponse(
+            status_code=400,
+            content=make_error(
+                "MISSING_API_KEY",
+                "Provide an LLM API key via X-LLM-API-Key header or set LLM_API_KEY in server config.",
+            ),
         )
 
     if not is_supported(symbol):
@@ -356,56 +372,33 @@ async def chat_stream(request: Request):
         try:
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
-            # Override settings key with user-provided key if present
-            if api_key:
-                import os
-                os.environ["LLM_API_KEY"] = api_key
-                from investorai_mcp.config import settings
-                settings.llm_api_key = api_key
+            import hashlib
+            from datetime import datetime
 
-            from investorai_mcp.tools.get_trend_summary import get_trend_summary
-            result = await get_trend_summary(
-                symbol,
-                range="5Y",   # chat always gets max data; question range detection narrows it
+            from investorai_mcp.llm.agent import run_agent_loop
+
+            session_hash = hashlib.sha256(
+                f"{symbol}{datetime.now(UTC).date()}".encode()
+            ).hexdigest()[:16]
+
+            _got_response = False
+            async for event in run_agent_loop(
                 question=question,
                 history=history if history else None,
-            )
+                api_key=api_key or None,
+                session_hash=session_hash,
+            ):
+                if event["type"] == "token":
+                    if _ttft_ms is None:
+                        _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                    _got_response = True
+                if event["type"] == "done":
+                    _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                yield f"data: {json.dumps(event)}\n\n"
 
-            # Extract component timings before streaming begins
-            _timings      = result.get("_timings") or {}
-            _db_fetch_ms  = _timings.get("db_fetch_ms")
-            _llm_ms       = _timings.get("llm_ms")
-            _validation_ms = _timings.get("validation_ms")
-
-            # Capture server-side processing time (before streaming)
-            _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
-
-            if "error" in result and result["error"]:
+            if not _got_response:
                 _req_status = "error"
-                msg = result.get("message", "Something went wrong.")
-                if result.get("retry") or result.get("code") == "DATA_UNAVAILABLE":
-                    msg = "Data is still being fetched from the market. Please try again in a few seconds."
-                yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
-                return
-
-            summary = result.get("summary", "")
-            words   = summary.split(" ")
-
-            for i, word in enumerate(words):
-                # Capture time-to-first-token on the first iteration
-                if _ttft_ms is None:
-                    _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
-                chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-                await asyncio.sleep(0.03)
-
-            yield f"data: {json.dumps({'type': 'citations', 'citations': result.get('citations', [])})}\n\n"
-            yield f"data: {json.dumps({'type': 'stats',     'stats':     result.get('stats', {})})}\n\n"
-            if result.get('sentiment'):
-                yield f"data: {json.dumps({'type': 'sentiment', 'sentiment': result['sentiment']})}\n\n"
-            if result.get('sentiments'):
-                yield f"data: {json.dumps({'type': 'sentiments', 'sentiments': result['sentiments']})}\n\n"
-            yield f"data: {json.dumps({'type': 'done',      'validation_passed': result.get('validation_passed', False)})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'No response generated.'})}\n\n"
 
         except Exception as e:
             _req_status = "error"
@@ -426,8 +419,8 @@ async def chat_stream(request: Request):
                         validation_ms=_validation_ms,
                         status=_req_status,
                     )
-                except Exception:
-                    pass
+                except Exception as log_err:
+                    logger.warning("Failed to log chat request: %s", log_err)
 
     return StreamingResponse(
         event_stream(),
@@ -444,12 +437,10 @@ async def chat_stream(request: Request):
 @router.get("/monitoring/db")
 async def monitoring_db(request: Request):
     """Data health stats from local SQLite DB."""
-    from sqlalchemy import func, select, text
+    from sqlalchemy import func, select
+
     from investorai_mcp.db import AsyncSessionLocal
-    from investorai_mcp.db.models import (
-        CacheMetadata, LLMUsageLog, PriceHistory, EvalLog
-    )
-    from investorai_mcp.stocks import SUPPORTED_TICKERS
+    from investorai_mcp.db.models import CacheMetadata, EvalLog, LLMUsageLog, PriceHistory
 
     async with AsyncSessionLocal() as session:
 
@@ -468,12 +459,12 @@ async def monitoring_db(request: Request):
         # Stale tickers
         stale_count = (await session.execute(
             select(func.count()).select_from(CacheMetadata)
-            .where(CacheMetadata.is_stale == True)
+            .where(CacheMetadata.is_stale.is_(True))
         )).scalar()
 
         # LLM usage today
-        from datetime import datetime, timezone, timedelta
-        today_start = datetime.now(timezone.utc).replace(
+        from datetime import datetime, timedelta
+        today_start = datetime.now(UTC).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         llm_today = (await session.execute(
@@ -489,7 +480,7 @@ async def monitoring_db(request: Request):
         )).one()
 
         # LLM usage last 7 days
-        week_start = datetime.now(timezone.utc) - timedelta(days=7)
+        week_start = datetime.now(UTC) - timedelta(days=7)
         llm_week = (await session.execute(
             select(
                 func.count().label("total"),
@@ -509,7 +500,7 @@ async def monitoring_db(request: Request):
         eval_passed = (await session.execute(
             select(func.count()).select_from(EvalLog)
             .where(EvalLog.ts >= week_start)
-            .where(EvalLog.pass_fail == "PASS")
+            .where(EvalLog.pass_fail == "PASS")  # noqa: S105
         )).scalar() or 0
 
         # Provider breakdown
@@ -591,8 +582,9 @@ async def monitoring_db(request: Request):
 @router.get("/monitoring/langfuse")
 async def monitoring_langfuse(request: Request):
     """Fetch recent traces from Langfuse API."""
-    from investorai_mcp.config import settings
     import httpx
+
+    from investorai_mcp.config import settings
 
     if not settings.langfuse_public_key or not settings.langfuse_secret_key:
         return JSONResponse(
@@ -605,6 +597,14 @@ async def monitoring_langfuse(request: Request):
         )
 
     host = settings.langfuse_host.rstrip("/")
+    if not host.startswith("https://"):
+        return JSONResponse(
+            status_code=400,
+            content=make_error(
+                "INVALID_LANGFUSE_HOST",
+                "LANGFUSE_HOST must be an HTTPS URL.",
+            ),
+        )
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -665,6 +665,7 @@ async def monitoring_latency(request: Request):
     threshold computed from all recorded calls.
     """
     from sqlalchemy import select
+
     from investorai_mcp.db import AsyncSessionLocal
     from investorai_mcp.db.models import ChatRequestLog
 

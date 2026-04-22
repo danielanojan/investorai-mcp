@@ -8,11 +8,10 @@ The core logic lives in the synchronous helper `handle_meta_question` so it
 can be imported and unit-tested without async overhead.  The MCP tool wrapper
 is async to match the FastMCP interface.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS
-
 
 # ── Pure sync helper (importable and unit-testable) ───────────────────────
 
@@ -26,7 +25,7 @@ def handle_meta_question(question: str) -> dict | None:
     never short-circuited here — they are forwarded to the data pipeline.
     """
     q = question.lower()
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
 
     _performance_words = [
         "best", "worst", "top", "bottom", "perform", "return", "gain",

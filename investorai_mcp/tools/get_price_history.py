@@ -1,18 +1,22 @@
-from datetime import date
 from typing import Literal
 
-from fastmcp import Context 
+from fastmcp import Context
 
-from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.data.yfinance_adapter import YFinanceAdapter
+from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.db.models import PriceHistory
 from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
-from investorai_mcp.stocks import is_supported 
+from investorai_mcp.stocks import is_supported
 
+_adapter: YFinanceAdapter | None = None
 
-_adapter = YFinanceAdapter()
+def _get_adapter() -> YFinanceAdapter:
+    global _adapter
+    if _adapter is None:
+        _adapter = YFinanceAdapter()
+    return _adapter
 
 
 def _format_price(row: PriceHistory, price_type:str) -> dict:
@@ -37,7 +41,8 @@ async def get_price_history(
     ticker_symbol: str,
     range: Literal["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"] = "1Y",
     price_type: Literal["adj_close", "close", "avg_price"] = "adj_close",
-    ctx : Context | None = None,   
+    limit: int = 0,
+    ctx : Context | None = None,
 ) -> dict:
     """
     Return daily price history for a supported stock ticker. 
@@ -76,7 +81,7 @@ async def get_price_history(
 
     with lf_span("get_price_history", input={"symbol": symbol, "range": range}):
         async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _adapter)
+            manager = CacheManager(session, _get_adapter())
 
             #ensure ticker row exists in DB
             await manager.ensure_ticker_exists(symbol)
@@ -92,7 +97,13 @@ async def get_price_history(
                 "hint": "Try again in few seconds - a background fetch is in progress."
             }
 
-        prices = [_format_price(row, price_type) for row in result.data]
+        all_prices = [_format_price(row, price_type) for row in result.data]
+        if limit > 0 and len(all_prices) > limit:
+            # Evenly sample across the full range to preserve trend shape
+            step = len(all_prices) / limit
+            prices = [all_prices[int(i * step)] for i in range(limit)]
+        else:
+            prices = all_prices
 
         #compute summary statistics
         price_values = [p["price"] for p in prices]

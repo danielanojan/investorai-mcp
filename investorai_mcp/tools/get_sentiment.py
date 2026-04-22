@@ -7,7 +7,7 @@ an overall sentiment with source citations
 """
 import hashlib
 import inspect
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastmcp import Context
 from sqlalchemy import select
@@ -32,9 +32,10 @@ Do not include any other text. Return only the JSON object"""
 
 @mcp.tool()
 async def get_sentiment(
-    ticker_symbol: str, 
+    ticker_symbol: str,
     limit: int=10,
     ctx: Context | None = None,
+    api_key: str | None = None,
 ) -> dict:
     """
     Return AI-Powered news sentiment analysis for a supported stock.
@@ -94,10 +95,8 @@ async def get_sentiment(
         if not articles:
             return {
                 "error": True,
-                "sentiment": "neutral",
-                "score": 0,
-                "message": f"No news articles found for {symbol}. Sentiment is neutral by default.",
-                "citations": []
+                "code": "NO_NEWS",
+                "message": f"No news articles found for {symbol}. Fetch news first with get_news.",
             }
 
         # build headlines block with citations.
@@ -107,7 +106,7 @@ async def get_sentiment(
             for a in articles
         )
         session_hash = hashlib.sha256(
-            f"{symbol}{datetime.now(timezone.utc).date()}sentiment".encode()
+            f"{symbol}{datetime.now(UTC).date()}sentiment".encode()
         ).hexdigest()[:16]
 
         #Call LLM for sentiment analysis
@@ -121,6 +120,7 @@ async def get_sentiment(
                 session_hash=session_hash,
                 tool_name="get_sentiment",
                 max_tokens=200,
+                api_key=api_key,
             )
 
             #parse JSON response
@@ -128,11 +128,21 @@ async def get_sentiment(
             clean = raw.strip().replace("```json", "").replace("```", "").strip()
             sentiment_data = json.loads(clean)
 
+        except (json.JSONDecodeError, ValueError) as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Sentiment JSON parse failed for %s: %s | raw: %r", symbol, e, clean if 'clean' in dir() else raw
+            )
+            return {
+                "error": True,
+                "code": "LLM_RESPONSE_INVALID",
+                "message": "Sentiment analysis returned invalid JSON.",
+            }
         except Exception as e:
             return {
                 "error": True,
                 "code": "LLM_UNAVAILABLE",
-                "message": f"Sentiment Analysis failed: {e}"
+                "message": f"Sentiment analysis failed: {e}",
             }
 
         # Build citations from articles used

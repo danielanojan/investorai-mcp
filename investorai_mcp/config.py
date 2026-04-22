@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 #here the env is loaded and validated.
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -21,7 +22,7 @@ class Settings(BaseSettings):
     ############## LLM (BYOK) 
     llm_api_key : str | None = None
     llm_model : str = "claude-sonnet-4-20250514"
-    llm_provider : str = "anthropic"    # anthropic | openai | groq
+    llm_provider : Literal["anthropic", "openai", "groq"] = "anthropic"
     
     
     ############## Langfuse monitoring
