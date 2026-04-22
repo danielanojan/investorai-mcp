@@ -20,13 +20,13 @@ from investorai_mcp.db.models import CacheMetadata, PriceHistory, Ticker
 
 logger = logging.getLogger(__name__)
 
-# Per-symbol locks — prevent duplicate refreshes for the same ticker
+# Per-symbol locks — prevent duplicate refreshes for the same ticker.
+# setdefault is used instead of if-not-in/assign to avoid a theoretical
+# race where two coroutines both pass the membership check before either inserts.
 _refresh_locks: dict[str, asyncio.Lock] = {}
 
 def _refresh_lock(symbol: str) -> asyncio.Lock:
-    if symbol not in _refresh_locks:
-        _refresh_locks[symbol] = asyncio.Lock()
-    return _refresh_locks[symbol]
+    return _refresh_locks.setdefault(symbol, asyncio.Lock())
 
 # Global write lock — SQLite has one file-level write lock regardless of symbol.
 # When 50 tickers refresh concurrently (e.g. agent loop broad query), all try to

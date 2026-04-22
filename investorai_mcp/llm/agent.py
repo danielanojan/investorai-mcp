@@ -384,12 +384,7 @@ async def run_agent_loop(
       2. If LLM returns tool_calls → execute ALL concurrently, append results, repeat
       3. If LLM returns text → done
     """
-    import litellm
-    from investorai_mcp.config import settings
-
-    resolved_key = api_key or settings.llm_api_key
-    if not resolved_key:
-        raise RuntimeError("No LLM API key configured.")
+    from investorai_mcp.llm.litellm_client import _call_llm_raw
 
     messages: list[dict] = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
     if history:
@@ -397,13 +392,14 @@ async def run_agent_loop(
     messages.append({"role": "user", "content": question})
 
     for iteration in range(max_iterations):
-        response = await litellm.acompletion(
-            model=settings.llm_model,
+        response = await _call_llm_raw(
             messages=messages,
+            session_hash=session_hash,
+            tool_name="agent_loop",
+            max_tokens=2000,
+            api_key=api_key,
             tools=TOOL_SCHEMAS,
             tool_choice="auto",
-            api_key=resolved_key,
-            max_tokens=2000,
         )
 
         msg = response.choices[0].message

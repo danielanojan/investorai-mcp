@@ -404,7 +404,7 @@ tests/
 | Agentic ReAct loop for BYOK chat | ✅ Done |
 | VS Code + GitHub Copilot MCP integration |🔜 Planned |
 | Cursor MCP integration | 🔜 Planned|
-| RAG to capture revevant historical news articles | 🔜 Planned|
+| RAG to capture relevant historical news articles | 🔜 Planned|
 | Historical price explanations using past news articles | 🔜 Planned|
 | LLM evaluation scripts (offline prompt benchmarking, hallucination rate scoring) | 🔜 Planned |
 | Real-time quotes (WebSocket) | 🔜 Planned |

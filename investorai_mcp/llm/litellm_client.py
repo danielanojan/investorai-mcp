@@ -92,50 +92,39 @@ async def _log_usage(
         await session.commit()
         
         
-#### Main call function --------------------------------
+#### Low-level call — shared by call_llm and run_agent_loop --------------------------------
 
-async def call_llm(
+async def _call_llm_raw(
     messages: list[dict],
-    session_hash : str = "anonymous",
+    session_hash: str = "anonymous",
     tool_name: str | None = None,
     max_tokens: int = 500,
     api_key: str | None = None,
-) -> dict:
+    tools: list | None = None,
+    tool_choice: str = "auto",
+):
     """
-    Send messages to the LLM and return the response text
-    
-    Uses LiteLLM to route to any provider. Logs every call to 
-    Langfuse (if configured) and to the llm_usage_log in the DB. 
-    
-    Args: 
-        messages : List of { role: "system|user|assistant", content: "text" } dicts
-        session_hash : Anonymous session identifier for usage tracking
-        tool_name : Which MCP tool triggered for this call (For langfuse tracing)
-        max_tokens : Maximum number of tokens to generate. Default is 500. Adjust based on expected response length.
-        
-    Returns:
-        Response text as a plain string
-    
-    Raises: 
-        RuntimeError: if no API key is configured or LLM call fails. 
+    Execute one LLM call with full observability (Langfuse + DB usage log).
+    Returns the raw LiteLLM response object so callers can inspect tool_calls
+    or extract text depending on their needs.
+
+    Raises RuntimeError on auth failure, rate limit, timeout, or other errors.
     """
     resolved_key = api_key or settings.llm_api_key
     if not resolved_key:
         raise RuntimeError("No LLM API key configured. "
                            "Please set llm_api_key in .env file.")
 
-    #Build kwargs for litellm
-    call_kwargs = {
+    call_kwargs: dict = {
         "model": settings.llm_model,
         "messages": messages,
         "max_tokens": max_tokens,
         "api_key": resolved_key,
     }
-    
-        
-    # Start Langfuse observation before the LLM call.
-    # We track wall-clock ns ourselves because LiteLLM's internal OTel spans
-    # interfere with the span's auto-recorded start/end times.
+    if tools:
+        call_kwargs["tools"] = tools
+        call_kwargs["tool_choice"] = tool_choice
+
     _obs = None
     _start_ns: int = time.time_ns()
     if _langfuse:
@@ -150,11 +139,11 @@ async def call_llm(
         except Exception as lf_err:
             logger.warning("Langfuse start_observation failed: %s", lf_err)
 
-    # make the call and track timing
     start = time.monotonic()
     status = "success"
     tokens_in = 0
     tokens_out = 0
+    text = ""
 
     try:
         response = await acompletion(**call_kwargs)
@@ -164,8 +153,7 @@ async def call_llm(
             tokens_out = response.usage.completion_tokens or 0
 
         text = response.choices[0].message.content or ""
-
-        return text
+        return response
 
     except litellm.RateLimitError as e:
         status = "rate_limited"
@@ -186,8 +174,6 @@ async def call_llm(
         latency_ms = int((time.monotonic() - start) * 1000)
         _end_ns: int = _start_ns + latency_ms * 1_000_000
 
-        # Finalise Langfuse observation with output, tokens, and status.
-        # Pass explicit end_time (ns) so LiteLLM's OTel spans don't corrupt timing.
         if _obs:
             try:
                 _obs.update(
@@ -211,6 +197,26 @@ async def call_llm(
             )
         except Exception as log_err:
             logger.warning("Failed to log LLM usage: %s", log_err)
+
+
+#### Public text-only wrapper --------------------------------
+
+async def call_llm(
+    messages: list[dict],
+    session_hash: str = "anonymous",
+    tool_name: str | None = None,
+    max_tokens: int = 500,
+    api_key: str | None = None,
+) -> str:
+    """Send messages to LLM and return response text. All observability handled."""
+    response = await _call_llm_raw(
+        messages=messages,
+        session_hash=session_hash,
+        tool_name=tool_name,
+        max_tokens=max_tokens,
+        api_key=api_key,
+    )
+    return response.choices[0].message.content or ""
         
     
     

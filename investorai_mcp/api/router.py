@@ -390,7 +390,7 @@ async def chat_stream(request: Request):
                 yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
                 await asyncio.sleep(0.03)
 
-            yield f"data: {json.dumps({'type': 'done', 'validation_passed': True})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
             _req_status = "error"
