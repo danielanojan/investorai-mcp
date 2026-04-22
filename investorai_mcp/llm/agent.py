@@ -390,10 +390,12 @@ async def run_agent_loop(
     # wrapper around _call_llm_raw. Both paths share the same Langfuse tracing and
     # DB usage logging — observability is identical.
     from investorai_mcp.llm.litellm_client import _call_llm_raw
+    from investorai_mcp.llm.history import compress_history
 
     messages: list[dict] = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
     if history:
-        messages.extend(history)
+        compressed = await compress_history(history, session_hash=session_hash, api_key=api_key)
+        messages.extend(compressed)
     messages.append({"role": "user", "content": question})
 
     for iteration in range(max_iterations):
