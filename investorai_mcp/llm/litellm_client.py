@@ -181,10 +181,14 @@ async def _call_llm_raw(
                     usage_details={"input": tokens_in, "output": tokens_out},
                     status_message=None if status == "success" else status,
                 )
-                _obs.end(end_time=_end_ns)
-                _langfuse.flush()
             except Exception as lf_err:
-                logger.warning("Langfuse logging failed: %s", lf_err)
+                logger.warning("Langfuse update failed: %s", lf_err)
+            finally:
+                try:
+                    _obs.end(end_time=_end_ns)
+                    _langfuse.flush()
+                except Exception as lf_err:
+                    logger.warning("Langfuse end/flush failed: %s", lf_err)
 
         try:
             await _log_usage(

@@ -12,7 +12,13 @@ from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported 
 
 
-_adapter = YFinanceAdapter()
+_adapter: YFinanceAdapter | None = None
+
+def _get_adapter() -> YFinanceAdapter:
+    global _adapter
+    if _adapter is None:
+        _adapter = YFinanceAdapter()
+    return _adapter
 
 
 def _format_price(row: PriceHistory, price_type:str) -> dict:
@@ -77,7 +83,7 @@ async def get_price_history(
 
     with lf_span("get_price_history", input={"symbol": symbol, "range": range}):
         async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _adapter)
+            manager = CacheManager(session, _get_adapter())
 
             #ensure ticker row exists in DB
             await manager.ensure_ticker_exists(symbol)

@@ -19,6 +19,11 @@ import json
 import logging
 from typing import Any
 
+# Approximate token limits — ~4 chars per token. Hard limit aborts the loop;
+# warn limit logs but continues so small overages don't break valid queries.
+_TOKEN_HARD_LIMIT = 180_000
+_TOKEN_WARN_LIMIT = 150_000
+
 logger = logging.getLogger(__name__)
 
 MAX_ITERATIONS = 8
@@ -432,6 +437,14 @@ async def run_agent_loop(
     messages.append({"role": "user", "content": question})
 
     for iteration in range(max_iterations):
+        from investorai_mcp.llm.history import count_tokens_approx
+        token_estimate = count_tokens_approx(messages)
+        if token_estimate > _TOKEN_HARD_LIMIT:
+            logger.error("Agent context too large (~%d tokens), aborting loop", token_estimate)
+            return "The query requires too much data to process. Please ask about fewer stocks or a shorter time range."
+        if token_estimate > _TOKEN_WARN_LIMIT:
+            logger.warning("Agent context large: ~%d tokens at iteration %d", token_estimate, iteration + 1)
+
         response = await _call_llm_raw(
             messages=messages,
             session_hash=session_hash,

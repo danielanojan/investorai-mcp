@@ -6,7 +6,13 @@ from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
-_adapter = YFinanceAdapter()
+_adapter: YFinanceAdapter | None = None
+
+def _get_adapter() -> YFinanceAdapter:
+    global _adapter
+    if _adapter is None:
+        _adapter = YFinanceAdapter()
+    return _adapter
 
 # in memory rat elimit - tracks last refresh time per symbol
 # resets on server restart 
@@ -68,7 +74,7 @@ async def refresh_ticker(
     _last_refresh[symbol] = now
     
     async with AsyncSessionLocal() as session:
-        cache_manager = CacheManager(session, _adapter)
+        cache_manager = CacheManager(session, _get_adapter())
         await cache_manager.ensure_ticker_exists(symbol)
         result = await cache_manager.force_refresh_prices(symbol)
     return {

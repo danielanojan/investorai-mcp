@@ -16,13 +16,19 @@ from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
 
-_adapter = YFinanceAdapter()
+_adapter: YFinanceAdapter | None = None
+
+def _get_adapter() -> YFinanceAdapter:
+    global _adapter
+    if _adapter is None:
+        _adapter = YFinanceAdapter()
+    return _adapter
 
 async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     """Fetch news from yfinance and write to DB. Returns stored news"""
     from sqlalchemy import delete
 
-    records = await _adapter.fetch_news(symbol, limit=50)
+    records = await _get_adapter().fetch_news(symbol, limit=50)
     if not records:
         return []
 
@@ -102,7 +108,7 @@ async def get_news(
         
     with lf_span("get_news", input={"symbol": symbol, "limit": limit}):
         async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _adapter)
+            manager = CacheManager(session, _get_adapter())
             await manager.ensure_ticker_exists(symbol)
 
             #check if we have cached news and whether its fresh.

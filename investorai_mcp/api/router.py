@@ -41,19 +41,23 @@ async def _log_chat_request(
     from investorai_mcp.db import AsyncSessionLocal
     from investorai_mcp.db.models import ChatRequestLog
     async with AsyncSessionLocal() as session:
-        session.add(ChatRequestLog(
-            question=question,
-            symbols=symbols,
-            range=range_,
-            total_latency_ms=total_latency_ms,
-            ttft_ms=ttft_ms,
-            db_fetch_ms=db_fetch_ms,
-            llm_ms=llm_ms,
-            validation_ms=validation_ms,
-            status=status,
-            ts=datetime.now(timezone.utc),
-        ))
-        await session.commit()
+        try:
+            session.add(ChatRequestLog(
+                question=question,
+                symbols=symbols,
+                range=range_,
+                total_latency_ms=total_latency_ms,
+                ttft_ms=ttft_ms,
+                db_fetch_ms=db_fetch_ms,
+                llm_ms=llm_ms,
+                validation_ms=validation_ms,
+                status=status,
+                ts=datetime.now(timezone.utc),
+            ))
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 def _percentile(sorted_values: list[int], p: float) -> int:
