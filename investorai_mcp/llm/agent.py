@@ -100,7 +100,7 @@ TOOL_SCHEMAS = [
             "name": "get_stock_info",
             "description": (
                 "Return company profile: name, sector, exchange, market cap, currency. "
-                "Use to confirm a ticker is supported and get context before fetching price data."
+                "Use when you need company context before fetching price or news data."
             ),
             "parameters": {
                 "type": "object",
@@ -119,9 +119,9 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_daily_summary",
             "description": (
-                "Return pre-computed statistics for a stock: period return %, start/end price, "
-                "high, low, volatility, trading days. Pure DB lookup — no LLM, very fast. "
-                "Use this for performance comparisons and ranking. "
+                "Return performance statistics for a stock: period return %, start/end price, "
+                "high, low, volatility, trading days. "
+                "Use for performance comparisons and ranking. "
                 "For broad comparisons call this for all relevant stocks in one turn."
             ),
             "parameters": {
@@ -149,7 +149,7 @@ TOOL_SCHEMAS = [
                 "Return daily price history for a supported stock. "
                 "Use adj_close for trend analysis — adjusted for splits and dividends. "
                 "Use when you need the actual price series, not just summary stats. "
-                "Always set limit=52 or less — returning thousands of raw price points wastes context."
+                "Always set limit=52 or less to keep the response concise."
             ),
             "parameters": {
                 "type": "object",
@@ -206,9 +206,10 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_sentiment",
             "description": (
-                "Return AI-scored news sentiment for a stock: positive / negative / neutral, "
+                "Return news sentiment for a stock: positive / negative / neutral, "
                 "score (-1, 0, 1), one-sentence reasoning, and key themes. "
-                "Use when the user asks about market sentiment or news tone."
+                "Use when the user asks about market sentiment or news tone. "
+                "Requires news to be cached — call get_news first if unsure."
             ),
             "parameters": {
                 "type": "object",
@@ -231,8 +232,8 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_cache_status",
             "description": (
-                "Return data freshness status for a stock: last fetch time, staleness, error counts. "
-                "Use only when the user asks about data freshness or to diagnose outdated data."
+                "Return data freshness status for a stock: when each data type was last updated and whether it is current. "
+                "Use only when the user asks about data freshness or reports outdated data."
             ),
             "parameters": {
                 "type": "object",
@@ -251,9 +252,9 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "refresh_ticker",
             "description": (
-                "Force a live data refresh for a stock, bypassing the cache TTL. "
-                "Only call when the user explicitly requests fresh data. "
-                "Rate-limited to once per 5 minutes per ticker."
+                "Force a live data update for a stock. "
+                "Only call when the user explicitly requests fresh or up-to-date data. "
+                "Can only be called once per 5 minutes per ticker."
             ),
             "parameters": {
                 "type": "object",
