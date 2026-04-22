@@ -201,44 +201,6 @@ Try asking: *"How has NVDA performed over the last year compared to AMD?"*
 
 ## Sequence diagram — BYOK chat with agentic ReAct loop
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant Frontend as Frontend_ChatPanel
-    participant Hook as Hook_useChat
-    participant API as API_chat_stream
-    participant Agent as Agent_ReAct_loop
-    participant Tools as MCP_tools
-    participant LLM as LLM_engine
-
-    User->>Frontend: Type question
-    Frontend->>Hook: submitQuestion(question)
-    Hook->>API: POST /api/chat/stream (SSE)
-    API-->>Hook: SSE type=start
-
-    API->>Agent: run_agent_loop(question, api_key)
-
-    loop ReAct iterations (max 8)
-        Agent->>LLM: messages + 10 tool schemas
-        LLM-->>Agent: tool_calls[] or final text
-
-        alt tool_calls returned
-            Note over Agent: Execute all tool_calls concurrently
-            Agent->>Tools: asyncio.gather(parse_question, get_daily_summary×N, ...)
-            Tools-->>Agent: results[]
-            Agent->>Agent: append tool results to messages
-        else final text returned
-            Agent-->>API: final response string
-        end
-    end
-
-    Note over API: Stream final response
-    API-->>Hook: SSE type=token (word by word)
-    API-->>Hook: SSE type=done
-
-    Hook-->>Frontend: messages state updated
-    Frontend-->>User: Render answer
-```
 
 ## Available MCP Tools
 
