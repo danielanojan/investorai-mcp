@@ -340,6 +340,16 @@ async def chat_stream(request: Request):
             content=make_error("MISSING_QUESTION", "question field is required."),
         )
 
+    from investorai_mcp.config import settings
+    if not api_key and not settings.llm_api_key:
+        return JSONResponse(
+            status_code=400,
+            content=make_error(
+                "MISSING_API_KEY",
+                "Provide an LLM API key via X-LLM-API-Key header or set LLM_API_KEY in server config.",
+            ),
+        )
+
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,

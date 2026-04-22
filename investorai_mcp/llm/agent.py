@@ -356,7 +356,8 @@ async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
     tool_name = tc.function.name
     try:
         tool_args = json.loads(tc.function.arguments)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Failed to parse tool arguments for %s: %r", tool_name, tc.function.arguments)
         tool_args = {}
 
     logger.info("Agent tool: %s %s", tool_name, tool_args)

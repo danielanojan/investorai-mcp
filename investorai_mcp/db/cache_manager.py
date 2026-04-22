@@ -96,8 +96,13 @@ class CacheManager:
         rows = await self._read_prices(symbol, period)
         lock = _refresh_lock(symbol)
         if not lock.locked():
-            asyncio.create_task(
+            task = asyncio.create_task(
                 self._locked_refresh_prices(symbol, meta, lock)
+            )
+            task.add_done_callback(
+                lambda t: logger.error(
+                    "Background price refresh failed for %s: %s", symbol, t.exception()
+                ) if t.exception() else None
             )
         return CacheResult(
             data=rows,
@@ -199,7 +204,10 @@ class CacheManager:
     ) -> None:
         async with lock:                  # per-symbol: skip if already refreshing this ticker
             async with _global_write_lock:  # global: serialise all SQLite writes
-                await self._refresh_prices(symbol, meta)
+                try:
+                    await asyncio.wait_for(self._refresh_prices(symbol, meta), timeout=30)
+                except asyncio.TimeoutError:
+                    logger.error("Price refresh timed out for %s after 30s", symbol)
 
     async def _refresh_prices(
         self, symbol: str, meta: CacheMetadata
