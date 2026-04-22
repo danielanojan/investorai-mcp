@@ -383,30 +383,24 @@ async def chat_stream(request: Request):
                 f"{symbol}{datetime.now(timezone.utc).date()}".encode()
             ).hexdigest()[:16]
 
-            summary = await run_agent_loop(
+            _got_response = False
+            async for event in run_agent_loop(
                 question=question,
                 history=history if history else None,
                 api_key=api_key or None,
                 session_hash=session_hash,
-            )
+            ):
+                if event["type"] == "token":
+                    if _ttft_ms is None:
+                        _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                    _got_response = True
+                if event["type"] == "done":
+                    _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                yield f"data: {json.dumps(event)}\n\n"
 
-            # Capture server-side processing time (before streaming)
-            _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
-
-            if not summary:
+            if not _got_response:
                 _req_status = "error"
                 yield f"data: {json.dumps({'type': 'error', 'message': 'No response generated.'})}\n\n"
-                return
-
-            words = summary.split(" ")
-            for i, word in enumerate(words):
-                if _ttft_ms is None:
-                    _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
-                chunk = word + (" " if i < len(words) - 1 else "")
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-                await asyncio.sleep(0.03)
-
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
             _req_status = "error"

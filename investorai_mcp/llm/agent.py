@@ -414,21 +414,26 @@ async def run_agent_loop(
     api_key: str | None = None,
     session_hash: str = "anonymous",
     max_iterations: int = MAX_ITERATIONS,
-) -> str:
+):
     """
-    Run the agentic ReAct loop and return the final text response.
+    Async generator — yields SSE event dicts as the agent executes.
+
+    Event types:
+      {"type": "thinking", "tools": [...], "iteration": N}  — LLM issued tool calls
+      {"type": "token",    "content": "word "}               — final answer words
+      {"type": "done"}                                        — stream complete
 
     Each iteration:
       1. Call LLM with current messages + tool schemas
-      2. If LLM returns tool_calls → execute ALL concurrently, append results, repeat
-      3. If LLM returns text → done
+      2. If LLM returns tool_calls → yield thinking event, execute concurrently, repeat
+      3. If LLM returns text → yield token events word by word, yield done
     """
     # _call_llm_raw (not call_llm) is used here because the agent loop needs access
     # to tool_calls on the raw response object. call_llm is a text-only convenience
     # wrapper around _call_llm_raw. Both paths share the same Langfuse tracing and
     # DB usage logging — observability is identical.
     from investorai_mcp.llm.litellm_client import _call_llm_raw
-    from investorai_mcp.llm.history import compress_history
+    from investorai_mcp.llm.history import compress_history, count_tokens_approx
 
     messages: list[dict] = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
     if history:
@@ -437,11 +442,12 @@ async def run_agent_loop(
     messages.append({"role": "user", "content": question})
 
     for iteration in range(max_iterations):
-        from investorai_mcp.llm.history import count_tokens_approx
         token_estimate = count_tokens_approx(messages)
         if token_estimate > _TOKEN_HARD_LIMIT:
             logger.error("Agent context too large (~%d tokens), aborting loop", token_estimate)
-            return "The query requires too much data to process. Please ask about fewer stocks or a shorter time range."
+            yield {"type": "token", "content": "The query requires too much data to process. Please ask about fewer stocks or a shorter time range."}
+            yield {"type": "done"}
+            return
         if token_estimate > _TOKEN_WARN_LIMIT:
             logger.warning("Agent context large: ~%d tokens at iteration %d", token_estimate, iteration + 1)
 
@@ -457,9 +463,18 @@ async def run_agent_loop(
 
         msg = response.choices[0].message
 
-        # No tool calls — LLM is done
+        # No tool calls — LLM has final answer, stream it word by word
         if not msg.tool_calls:
-            return msg.content or ""
+            final_text = msg.content or ""
+            words = final_text.split(" ")
+            for i, word in enumerate(words):
+                yield {"type": "token", "content": word + (" " if i < len(words) - 1 else "")}
+            yield {"type": "done"}
+            return
+
+        # Yield thinking event so client knows what tools are running
+        tool_names = [tc.function.name for tc in msg.tool_calls]
+        yield {"type": "thinking", "tools": tool_names, "iteration": iteration + 1}
 
         # Append assistant turn with all tool_calls
         messages.append(msg.model_dump(exclude_unset=True))
@@ -473,7 +488,7 @@ async def run_agent_loop(
             "Iteration %d: executed %d tool call(s): %s",
             iteration + 1,
             len(msg.tool_calls),
-            [tc.function.name for tc in msg.tool_calls],
+            tool_names,
         )
 
         for tool_call_id, result_str in results:
@@ -484,4 +499,5 @@ async def run_agent_loop(
             })
 
     logger.warning("Agent loop hit max_iterations (%d)", max_iterations)
-    return "I reached the maximum number of tool calls without completing. Please try a more specific question."
+    yield {"type": "token", "content": "I reached the maximum number of tool calls without completing. Please try a more specific question."}
+    yield {"type": "done"}
