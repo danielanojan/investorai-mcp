@@ -7,6 +7,7 @@ as the MCP tools
 
 """
 
+import asyncio
 import logging
 import math
 import time as _time
@@ -383,21 +384,28 @@ async def chat_stream(request: Request):
             ).hexdigest()[:16]
 
             _got_response = False
-            async for event in run_agent_loop(
-                question=question,
-                history=history if history else None,
-                api_key=api_key or None,
-                session_hash=session_hash,
-            ):
-                if event["type"] == "token":
-                    if _ttft_ms is None:
-                        _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
-                    _got_response = True
-                if event["type"] == "done":
-                    _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
-                yield f"data: {json.dumps(event)}\n\n"
+            try:
+                async with asyncio.timeout(120):  # hard ceiling: 2 minutes
+                    async for event in run_agent_loop(
+                        question=question,
+                        history=history if history else None,
+                        api_key=api_key or None,
+                        session_hash=session_hash,
+                    ):
+                        if event["type"] == "token":
+                            if _ttft_ms is None:
+                                _ttft_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                            _got_response = True
+                        if event["type"] == "done":
+                            _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                        yield f"data: {json.dumps(event)}\n\n"
+            except TimeoutError:
+                _req_status = "error"
+                _total_ms = (_time.time_ns() - _start_ns) // 1_000_000
+                logger.warning("Chat stream timed out after 120s for symbol=%s", symbol)
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Request timed out. Try a simpler question or fewer stocks.'})}\n\n"
 
-            if not _got_response:
+            if not _got_response and _req_status == "success":
                 _req_status = "error"
                 yield f"data: {json.dumps({'type': 'error', 'message': 'No response generated.'})}\n\n"
 
