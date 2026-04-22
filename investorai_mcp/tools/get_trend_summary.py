@@ -327,6 +327,14 @@ async def get_trend_summary(
     #   2. explicit range 'May 2023 to May 2025'
     #   3. single date (relative weekday or absolute calendar date)
     date_range    = detect_duration(question) or resolve_date_range(question)
+    if date_range is not None:
+        _dr_start, _dr_end = date_range
+        if _dr_start > _dr_end:
+            return {
+                "error":   True,
+                "code":    "INVALID_DATE_RANGE",
+                "message": f"Resolved date range is invalid: start ({_dr_start}) is after end ({_dr_end}).",
+            }
     resolved_date = (
         None
         if date_range is not None
@@ -527,6 +535,17 @@ async def get_trend_summary(
             combined_data = "\n".join(_compact_line(st) for st in all_stats)
         else:
             combined_data = "\n\n".join(st.to_text() for st in all_stats)
+
+        # Hard cap on data block size — ~25k tokens leaves room for system prompt + response.
+        # At 50 stocks with compact lines this rarely triggers, but guards against future growth.
+        _MAX_DATA_CHARS = 100_000
+        if len(combined_data) > _MAX_DATA_CHARS:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "Data block truncated before LLM: %d chars -> %d (%d stocks)",
+                len(combined_data), _MAX_DATA_CHARS, len(all_stats),
+            )
+            combined_data = combined_data[:_MAX_DATA_CHARS] + "\n[Data truncated — reduce stock count for full detail]"
 
         # Suppress news for large comparisons — it adds noise without helping rank stocks
         news_block = ""

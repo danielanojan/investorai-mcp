@@ -602,6 +602,14 @@ async def monitoring_langfuse(request: Request):
         )
 
     host = settings.langfuse_host.rstrip("/")
+    if not host.startswith("https://"):
+        return JSONResponse(
+            status_code=400,
+            content=make_error(
+                "INVALID_LANGFUSE_HOST",
+                "LANGFUSE_HOST must be an HTTPS URL.",
+            ),
+        )
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:

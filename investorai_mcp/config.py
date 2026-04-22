@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ############## LLM (BYOK) 
     llm_api_key : str | None = None
     llm_model : str = "claude-sonnet-4-20250514"
-    llm_provider : str = "anthropic"    # anthropic | openai | groq
+    llm_provider : Literal["anthropic", "openai", "groq"] = "anthropic"
     
     
     ############## Langfuse monitoring
