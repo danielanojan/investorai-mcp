@@ -353,21 +353,47 @@ AGENT_SYSTEM_PROMPT = """You are a stock research assistant for retail investors
 
 async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
     """Execute one tool call and return (tool_call_id, result_json)."""
+    import asyncio as _asyncio
     tool_name = tc.function.name
+
+    # Return parse error directly — don't call tool with empty args
     try:
         tool_args = json.loads(tc.function.arguments)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Failed to parse tool arguments for %s: %r", tool_name, tc.function.arguments)
-        tool_args = {}
+        return tc.id, json.dumps({
+            "error": True,
+            "code": "INVALID_TOOL_ARGS",
+            "message": f"Could not parse arguments for {tool_name}. Try again with valid JSON arguments.",
+            "retryable": True,
+        })
 
     logger.info("Agent tool: %s %s", tool_name, tool_args)
 
     try:
         result = await _dispatch(tool_name, tool_args, api_key)
         return tc.id, json.dumps(result, default=str)
+    except _asyncio.TimeoutError as e:
+        logger.warning("Tool %s timed out", tool_name)
+        return tc.id, json.dumps({
+            "error": True, "code": "TIMEOUT",
+            "message": f"{tool_name} timed out. Try again or use a smaller date range.",
+            "retryable": True,
+        })
+    except ValueError as e:
+        logger.warning("Tool %s bad arguments: %s", tool_name, e)
+        return tc.id, json.dumps({
+            "error": True, "code": "BAD_ARGS",
+            "message": str(e),
+            "retryable": False,
+        })
     except Exception as e:
         logger.warning("Tool %s failed: %s", tool_name, e)
-        return tc.id, json.dumps({"error": True, "message": str(e)})
+        return tc.id, json.dumps({
+            "error": True, "code": "TOOL_ERROR",
+            "message": str(e),
+            "retryable": True,
+        })
 
 
 async def run_agent_loop(
