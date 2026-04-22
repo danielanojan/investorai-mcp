@@ -363,8 +363,8 @@ Do not make one tool call per turn. Return all tool_calls at once — they execu
 # ReAct loop
 # ---------------------------------------------------------------------------
 
-async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
-    """Execute one tool call and return (tool_call_id, result_json)."""
+async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str, str]:
+    """Execute one tool call and return (tool_call_id, tool_name, result_json)."""
     tool_name = tc.function.name
 
     # Return parse error directly — don't call tool with empty args
@@ -372,7 +372,7 @@ async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
         tool_args = json.loads(tc.function.arguments)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Failed to parse tool arguments for %s: %r", tool_name, tc.function.arguments)
-        return tc.id, json.dumps({
+        return tc.id, tool_name, json.dumps({
             "error": True,
             "code": "INVALID_TOOL_ARGS",
             "message": f"Could not parse arguments for {tool_name}. Try again with valid JSON arguments.",
@@ -383,28 +383,65 @@ async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str]:
 
     try:
         result = await _dispatch(tool_name, tool_args, api_key)
-        return tc.id, json.dumps(result, default=str)
+        return tc.id, tool_name, json.dumps(result, default=str)
     except TimeoutError:
         logger.warning("Tool %s timed out", tool_name)
-        return tc.id, json.dumps({
+        return tc.id, tool_name, json.dumps({
             "error": True, "code": "TIMEOUT",
             "message": f"{tool_name} timed out. Try again or use a smaller date range.",
             "retryable": True,
         })
     except ValueError as e:
         logger.warning("Tool %s bad arguments: %s", tool_name, e)
-        return tc.id, json.dumps({
+        return tc.id, tool_name, json.dumps({
             "error": True, "code": "BAD_ARGS",
             "message": str(e),
             "retryable": False,
         })
     except Exception as e:
         logger.warning("Tool %s failed: %s", tool_name, e)
-        return tc.id, json.dumps({
+        return tc.id, tool_name, json.dumps({
             "error": True, "code": "TOOL_ERROR",
             "message": str(e),
             "retryable": True,
         })
+
+
+async def _emit_side_events(tool_results: list[tuple[str, str]]):
+    """
+    Yield citations / sentiment / sentiments SSE events from collected tool results.
+
+    get_sentiment returns key "sentiment" (not "overall") — mapped here to match
+    the SentimentResult interface the frontend expects.
+    """
+    all_citations: list[dict] = []
+    sentiments: dict[str, dict] = {}
+
+    for tool_name, result_str in tool_results:
+        try:
+            result = json.loads(result_str)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if result.get("error"):
+            continue
+
+        if tool_name == "get_sentiment":
+            symbol = result.get("symbol", "")
+            sentiments[symbol] = {
+                "overall":    result.get("sentiment", "neutral"),
+                "score":      result.get("score", 0),
+                "reasoning":  result.get("reasoning", ""),
+                "key_themes": result.get("key_themes", []),
+            }
+            all_citations.extend(result.get("citations", []))
+
+    if all_citations:
+        yield {"type": "citations", "citations": all_citations}
+
+    if len(sentiments) == 1:
+        yield {"type": "sentiment", "sentiment": next(iter(sentiments.values()))}
+    elif len(sentiments) > 1:
+        yield {"type": "sentiments", "sentiments": sentiments}
 
 
 async def run_agent_loop(
@@ -440,11 +477,17 @@ async def run_agent_loop(
         messages.extend(compressed)
     messages.append({"role": "user", "content": question})
 
+    # Collect (tool_name, result_str) across all iterations so we can emit
+    # citations/sentiment events after the final answer is streamed.
+    collected_tool_results: list[tuple[str, str]] = []
+
     for iteration in range(max_iterations):
         token_estimate = count_tokens_approx(messages)
         if token_estimate > _TOKEN_HARD_LIMIT:
             logger.error("Agent context too large (~%d tokens), aborting loop", token_estimate)
             yield {"type": "token", "content": "The query requires too much data to process. Please ask about fewer stocks or a shorter time range."}
+            async for event in _emit_side_events(collected_tool_results):
+                yield event
             yield {"type": "done"}
             return
         if token_estimate > _TOKEN_WARN_LIMIT:
@@ -468,6 +511,8 @@ async def run_agent_loop(
             words = final_text.split(" ")
             for i, word in enumerate(words):
                 yield {"type": "token", "content": word + (" " if i < len(words) - 1 else "")}
+            async for event in _emit_side_events(collected_tool_results):
+                yield event
             yield {"type": "done"}
             return
 
@@ -490,7 +535,8 @@ async def run_agent_loop(
             tool_names,
         )
 
-        for tool_call_id, result_str in results:
+        for tool_call_id, tool_name, result_str in results:
+            collected_tool_results.append((tool_name, result_str))
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call_id,
@@ -499,4 +545,6 @@ async def run_agent_loop(
 
     logger.warning("Agent loop hit max_iterations (%d)", max_iterations)
     yield {"type": "token", "content": "I reached the maximum number of tool calls without completing. Please try a more specific question."}
+    async for event in _emit_side_events(collected_tool_results):
+        yield event
     yield {"type": "done"}

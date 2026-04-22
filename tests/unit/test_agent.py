@@ -212,7 +212,7 @@ async def test_execute_tool_call_bad_json_returns_error():
     tc.function.name = "get_price_history"
     tc.function.arguments = "{not valid json"
 
-    call_id, result_str = await _execute_tool_call(tc, api_key=None)
+    call_id, tool_name, result_str = await _execute_tool_call(tc, api_key=None)
     result = json.loads(result_str)
 
     assert result["error"] is True
@@ -226,7 +226,7 @@ async def test_execute_tool_call_timeout_returns_retryable_error():
     tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL"})
 
     with patch(_DISPATCH, new=AsyncMock(side_effect=TimeoutError())):
-        call_id, result_str = await _execute_tool_call(tc, api_key=None)
+        call_id, tool_name, result_str = await _execute_tool_call(tc, api_key=None)
 
     result = json.loads(result_str)
     assert result["error"] is True
@@ -240,7 +240,7 @@ async def test_execute_tool_call_value_error_returns_non_retryable():
     tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL"})
 
     with patch(_DISPATCH, new=AsyncMock(side_effect=ValueError("bad range"))):
-        call_id, result_str = await _execute_tool_call(tc, api_key=None)
+        call_id, tool_name, result_str = await _execute_tool_call(tc, api_key=None)
 
     result = json.loads(result_str)
     assert result["error"] is True
@@ -254,7 +254,7 @@ async def test_execute_tool_call_generic_error_is_retryable():
     tc = _make_tool_call("get_news", {"ticker_symbol": "AAPL"})
 
     with patch(_DISPATCH, new=AsyncMock(side_effect=RuntimeError("network down"))):
-        call_id, result_str = await _execute_tool_call(tc, api_key=None)
+        call_id, tool_name, result_str = await _execute_tool_call(tc, api_key=None)
 
     result = json.loads(result_str)
     assert result["error"] is True
@@ -268,9 +268,10 @@ async def test_execute_tool_call_success_returns_result():
     tool_result = {"matches": [{"symbol": "AAPL"}]}
 
     with patch(_DISPATCH, new=AsyncMock(return_value=tool_result)):
-        call_id, result_str = await _execute_tool_call(tc, api_key=None)
+        call_id, tool_name, result_str = await _execute_tool_call(tc, api_key=None)
 
     assert call_id == "tc_1"
+    assert tool_name == "search_ticker"
     result = json.loads(result_str)
     assert result["matches"][0]["symbol"] == "AAPL"
 
@@ -343,3 +344,143 @@ async def test_multiple_tool_calls_dispatched_concurrently():
     assert "get_price_history" in dispatch_calls
     thinking = [e for e in events if e["type"] == "thinking"]
     assert len(thinking[0]["tools"]) == 2
+
+
+# ---------------------------------------------------------------------------
+# _emit_side_events
+# ---------------------------------------------------------------------------
+
+async def _drain(gen):
+    return [e async for e in gen]
+
+
+async def test_emit_side_events_empty_no_events():
+    from investorai_mcp.llm.agent import _emit_side_events
+    events = await _drain(_emit_side_events([]))
+    assert events == []
+
+
+async def test_emit_side_events_error_result_ignored():
+    from investorai_mcp.llm.agent import _emit_side_events
+    import json
+    error_result = json.dumps({"error": True, "code": "NO_NEWS"})
+    events = await _drain(_emit_side_events([("get_sentiment", error_result)]))
+    assert events == []
+
+
+async def test_emit_side_events_sentiment_single_stock():
+    from investorai_mcp.llm.agent import _emit_side_events
+    import json
+    sentiment_result = json.dumps({
+        "symbol": "AAPL",
+        "sentiment": "positive",
+        "score": 1,
+        "reasoning": "Good earnings.",
+        "key_themes": ["earnings", "growth"],
+        "citations": [{"type": "news", "publisher": "Reuters", "url": "http://r.com/1"}],
+        "articles_analyzed": 1,
+    })
+    events = await _drain(_emit_side_events([("get_sentiment", sentiment_result)]))
+    types = {e["type"] for e in events}
+    assert "citations" in types
+    assert "sentiment" in types
+    sentiment_event = next(e for e in events if e["type"] == "sentiment")
+    assert sentiment_event["sentiment"]["overall"] == "positive"
+    assert sentiment_event["sentiment"]["score"] == 1
+
+
+async def test_emit_side_events_sentiment_maps_key_correctly():
+    """get_sentiment returns 'sentiment' key — must be mapped to 'overall'."""
+    from investorai_mcp.llm.agent import _emit_side_events
+    import json
+    result = json.dumps({
+        "symbol": "TSLA", "sentiment": "negative", "score": -1,
+        "reasoning": "Bad news.", "key_themes": [], "citations": [],
+    })
+    events = await _drain(_emit_side_events([("get_sentiment", result)]))
+    s = next(e for e in events if e["type"] == "sentiment")
+    assert s["sentiment"]["overall"] == "negative"
+    assert "sentiment" not in s["sentiment"]  # raw key must not leak through
+
+
+async def test_emit_side_events_multiple_stocks_yields_sentiments():
+    from investorai_mcp.llm.agent import _emit_side_events
+    import json
+
+    def _make(symbol, overall):
+        return ("get_sentiment", json.dumps({
+            "symbol": symbol, "sentiment": overall, "score": 1,
+            "reasoning": "ok", "key_themes": [], "citations": [],
+        }))
+
+    events = await _drain(_emit_side_events([_make("AAPL", "positive"), _make("MSFT", "neutral")]))
+    types = {e["type"] for e in events}
+    assert "sentiments" in types
+    assert "sentiment" not in types  # plural form used for multi-stock
+    sentiments_event = next(e for e in events if e["type"] == "sentiments")
+    assert "AAPL" in sentiments_event["sentiments"]
+    assert "MSFT" in sentiments_event["sentiments"]
+
+
+async def test_emit_side_events_citations_collected():
+    from investorai_mcp.llm.agent import _emit_side_events
+    import json
+    result = json.dumps({
+        "symbol": "AAPL", "sentiment": "positive", "score": 1,
+        "reasoning": "ok", "key_themes": [],
+        "citations": [
+            {"type": "news", "publisher": "Reuters", "url": "http://r.com/1"},
+            {"type": "news", "publisher": "Bloomberg", "url": "http://b.com/2"},
+        ],
+    })
+    events = await _drain(_emit_side_events([("get_sentiment", result)]))
+    citations_event = next(e for e in events if e["type"] == "citations")
+    assert len(citations_event["citations"]) == 2
+
+
+async def test_emit_side_events_non_sentiment_tool_ignored():
+    from investorai_mcp.llm.agent import _emit_side_events
+    import json
+    price_result = json.dumps({"symbol": "AAPL", "prices": [], "is_stale": False})
+    events = await _drain(_emit_side_events([("get_price_history", price_result)]))
+    assert events == []
+
+
+# ---------------------------------------------------------------------------
+# run_agent_loop emits citations/sentiment before done
+# ---------------------------------------------------------------------------
+
+async def test_loop_emits_sentiment_event_after_get_sentiment():
+    from investorai_mcp.llm.agent import run_agent_loop
+
+    tc = _make_tool_call("get_sentiment", {"ticker_symbol": "AAPL"})
+    first_response = _make_response(tool_calls=[tc])
+    final_response = _make_response("AAPL sentiment is positive.")
+
+    call_count = 0
+
+    async def fake_llm(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        return first_response if call_count == 1 else final_response
+
+    sentiment_result = {
+        "symbol": "AAPL", "sentiment": "positive", "score": 1,
+        "reasoning": "Good earnings.", "key_themes": ["earnings"],
+        "citations": [{"type": "news", "publisher": "Reuters", "url": "http://r.com"}],
+        "articles_analyzed": 1,
+    }
+
+    with patch(_LLM_RAW, new=fake_llm), \
+         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
+         patch(_COUNT_TOK, return_value=1000), \
+         patch(_DISPATCH, new=AsyncMock(return_value=sentiment_result)):
+        events = await _collect(run_agent_loop("What is AAPL sentiment?"))
+
+    types = [e["type"] for e in events]
+    assert "sentiment" in types
+    assert "citations" in types
+    # sentiment and citations must come before done
+    done_idx = types.index("done")
+    assert types.index("sentiment") < done_idx
+    assert types.index("citations") < done_idx
