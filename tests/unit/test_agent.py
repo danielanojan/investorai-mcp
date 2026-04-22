@@ -361,16 +361,18 @@ async def test_emit_side_events_empty_no_events():
 
 
 async def test_emit_side_events_error_result_ignored():
-    from investorai_mcp.llm.agent import _emit_side_events
     import json
+
+    from investorai_mcp.llm.agent import _emit_side_events
     error_result = json.dumps({"error": True, "code": "NO_NEWS"})
     events = await _drain(_emit_side_events([("get_sentiment", error_result)]))
     assert events == []
 
 
 async def test_emit_side_events_sentiment_single_stock():
-    from investorai_mcp.llm.agent import _emit_side_events
     import json
+
+    from investorai_mcp.llm.agent import _emit_side_events
     sentiment_result = json.dumps({
         "symbol": "AAPL",
         "sentiment": "positive",
@@ -391,8 +393,9 @@ async def test_emit_side_events_sentiment_single_stock():
 
 async def test_emit_side_events_sentiment_maps_key_correctly():
     """get_sentiment returns 'sentiment' key — must be mapped to 'overall'."""
-    from investorai_mcp.llm.agent import _emit_side_events
     import json
+
+    from investorai_mcp.llm.agent import _emit_side_events
     result = json.dumps({
         "symbol": "TSLA", "sentiment": "negative", "score": -1,
         "reasoning": "Bad news.", "key_themes": [], "citations": [],
@@ -404,8 +407,9 @@ async def test_emit_side_events_sentiment_maps_key_correctly():
 
 
 async def test_emit_side_events_multiple_stocks_yields_sentiments():
-    from investorai_mcp.llm.agent import _emit_side_events
     import json
+
+    from investorai_mcp.llm.agent import _emit_side_events
 
     def _make(symbol, overall):
         return ("get_sentiment", json.dumps({
@@ -423,8 +427,9 @@ async def test_emit_side_events_multiple_stocks_yields_sentiments():
 
 
 async def test_emit_side_events_citations_collected():
-    from investorai_mcp.llm.agent import _emit_side_events
     import json
+
+    from investorai_mcp.llm.agent import _emit_side_events
     result = json.dumps({
         "symbol": "AAPL", "sentiment": "positive", "score": 1,
         "reasoning": "ok", "key_themes": [],
@@ -439,8 +444,9 @@ async def test_emit_side_events_citations_collected():
 
 
 async def test_emit_side_events_non_sentiment_tool_ignored():
-    from investorai_mcp.llm.agent import _emit_side_events
     import json
+
+    from investorai_mcp.llm.agent import _emit_side_events
     price_result = json.dumps({"symbol": "AAPL", "prices": [], "is_stale": False})
     events = await _drain(_emit_side_events([("get_price_history", price_result)]))
     assert events == []
