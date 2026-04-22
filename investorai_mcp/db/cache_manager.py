@@ -21,8 +21,11 @@ from investorai_mcp.db.models import CacheMetadata, PriceHistory, Ticker
 logger = logging.getLogger(__name__)
 
 # Per-symbol locks — prevent duplicate refreshes for the same ticker.
-# setdefault is used instead of if-not-in/assign to avoid a theoretical
-# race where two coroutines both pass the membership check before either inserts.
+# setdefault is used instead of if-not-in/assign to prevent a race where two
+# coroutines both pass the membership check before either inserts a lock.
+# Two coroutines can both evaluate asyncio.Lock() as the default argument, but
+# dict.setdefault is atomic in CPython — only the first caller's lock is stored,
+# and both callers receive the same lock object back. No separate locks are created.
 _refresh_locks: dict[str, asyncio.Lock] = {}
 
 def _refresh_lock(symbol: str) -> asyncio.Lock:

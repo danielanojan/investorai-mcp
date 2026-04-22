@@ -385,6 +385,10 @@ async def run_agent_loop(
       2. If LLM returns tool_calls → execute ALL concurrently, append results, repeat
       3. If LLM returns text → done
     """
+    # _call_llm_raw (not call_llm) is used here because the agent loop needs access
+    # to tool_calls on the raw response object. call_llm is a text-only convenience
+    # wrapper around _call_llm_raw. Both paths share the same Langfuse tracing and
+    # DB usage logging — observability is identical.
     from investorai_mcp.llm.litellm_client import _call_llm_raw
 
     messages: list[dict] = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
