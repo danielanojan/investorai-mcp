@@ -60,13 +60,40 @@ def test_percentile_p99_returns_near_max():
 # Health
 # ---------------------------------------------------------------------------
 
-async def test_health_has_required_fields(client):
+async def test_health_ok(client):
     response = await client.get("/api/health")
     assert response.status_code == 200
     body = response.json()
-    assert "status" in body
+    assert body["status"] == "ok"
     assert "version" in body
     assert "provider" in body
+    assert "checks" in body
+    assert body["checks"]["db"]["status"] == "ok"
+    assert "latency_ms" in body["checks"]["db"]
+    assert "llm" in body["checks"]
+
+
+async def test_health_db_down_returns_503(client):
+    from unittest.mock import patch
+
+    with patch(
+        "investorai_mcp.db.AsyncSessionLocal",
+        return_value=_FakeErrorCtx(),
+    ):
+        response = await client.get("/api/health")
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["checks"]["db"]["status"] == "error"
+
+
+class _FakeErrorCtx:
+    async def __aenter__(self):
+        raise RuntimeError("DB down")
+
+    async def __aexit__(self, *a):
+        pass
 
 
 # ---------------------------------------------------------------------------

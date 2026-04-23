@@ -71,14 +71,48 @@ def _percentile(sorted_values: list[int], p: float) -> int:
 
 @router.get("/health")
 async def health():
+    import time
+
+    from sqlalchemy import text
+
     from investorai_mcp.config import settings
-    return {
-        "status": "ok",
-        "version": "0.1.0",
-        "transport": settings.mcp_transport, 
-        "ai_enabled": settings.ai_chat_enabled,
-        "provider": settings.data_provider, 
-    }
+    from investorai_mcp.db import AsyncSessionLocal
+
+    checks: dict[str, dict] = {}
+
+    # DB ping — SELECT 1
+    try:
+        t0 = time.monotonic()
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        checks["db"] = {
+            "status": "ok",
+            "latency_ms": round((time.monotonic() - t0) * 1000),
+        }
+    except Exception as e:
+        logger.error("Health check DB ping failed: %s", e)
+        checks["db"] = {"status": "error", "detail": "database unreachable"}
+
+    # LLM config — no live call, just confirm key is present
+    if settings.llm_api_key:
+        checks["llm"] = {"status": "ok", "provider": settings.llm_provider}
+    else:
+        checks["llm"] = {"status": "not_configured"}
+
+    overall = "ok" if checks["db"]["status"] == "ok" else "degraded"
+    status_code = 200 if overall == "ok" else 503
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status":     overall,
+            "version":    "0.1.0",
+            "checks":     checks,
+            "transport":  settings.mcp_transport,
+            "ai_enabled": settings.ai_chat_enabled,
+            "provider":   settings.data_provider,
+        },
+    )
     
 
 # ---- Tickers ---------------------------------------
