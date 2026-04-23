@@ -205,7 +205,7 @@ claude mcp add investorai --transport http http://localhost:8000/mcp
 
 Try asking: *"How has NVDA performed over the last year compared to AMD?"*
 
-## Available MCP Tools
+
 
 | Tool | Description |
 |---|---|
