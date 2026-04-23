@@ -4,8 +4,8 @@ AI-native stock research MCP server for retail investors — 11 tools, BYOK AI c
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![FastMCP](https://img.shields.io/badge/FastMCP-2.0+-green)
-![Tests](https://img.shields.io/badge/tests-389%20passing-brightgreen)
-![Coverage](https://img.shields.io/badge/coverage-83%25-green)
+![Tests](https://img.shields.io/badge/tests-410%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-82%25-green)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 ---
@@ -211,8 +211,10 @@ Try asking: *"How has NVDA performed over the last year compared to AMD?"*
 |---|---|
 | `search_ticker` | Fuzzy semantic search — find any supported ticker by name, keyword, or symbol |
 | `get_stock_info` | Company profile — name, sector, exchange, market cap, currency |
-| `get_price_history` | Daily OHLCV data for any range (1W / 1M / 3M / 6M / 1Y / 3Y / 5Y) |
-| `get_daily_summary` | Pre-computed statistics — return %, high, low, volatility, volume (no LLM) |
+| `get_price_history` | Daily OHLCV data for any range (1W / 1M / 3M / 6M / 1Y / 3Y / 5Y) — auto-refreshes stale data |
+| `get_price_history_batch` | Same as above for multiple symbols in one call — single DB query, parallel refresh |
+| `get_daily_summary` | Pre-computed statistics — return %, high, low, volatility, volume — auto-refreshes stale data |
+| `get_daily_summary_batch` | Same as above for multiple symbols in one call — single DB query, parallel refresh |
 | `get_news` | Latest news headlines, cached from provider with on-demand refresh |
 | `get_sentiment` | AI-scored news sentiment — positive / negative / neutral with reasoning and key themes |
 | `get_trend_summary` | AI narrative summary — supports multi-stock, sector queries, natural language dates, SSE streaming |
@@ -382,6 +384,8 @@ The `secrets` job runs in parallel with the `test` job — no dependency install
 
 Coverage gate is also enforced locally via `pyproject.toml` addopts, so `uv run pytest` fails below 80% everywhere.
 
+Pre-commit hooks also run locally on every `git commit`: gitleaks, ruff lint+fix, ruff-format, trailing whitespace, end-of-file, yaml/toml checks. Configured in `.pre-commit-config.yaml` — shared across contributors via version control.
+
 ## Development
 
 ### Setup
@@ -396,7 +400,7 @@ cp .env.example .env    # add your API keys
 ### Run tests
 
 ```bash
-uv run pytest tests/unit/                          # unit tests only (389 tests)
+uv run pytest tests/unit/                          # unit tests only (410 tests)
 uv run pytest tests/unit/ --cov=investorai_mcp     # with coverage report
 uv run pytest                                       # full suite
 ```
@@ -440,7 +444,7 @@ frontend/
     ├── components/     # React UI — ChatPanel, PriceChart, MonitoringDashboard…
     └── hooks/          # useChat (SSE), useBYOK
 tests/
-├── unit/               # 389 tests, 83% coverage — tools, agent loop, router, models
+├── unit/               # 410 tests, 82% coverage — tools, agent loop, router, models
 └── evals/              # Eval pairs for offline LLM quality benchmarking
 .github/
 └── workflows/
@@ -464,6 +468,9 @@ tests/
 | Per-symbol + global write lock | Two-layer asyncio locking + WAL mode | Per-symbol lock prevents duplicate refreshes; global lock serialises SQLite writes; WAL provides OS-level retry safety |
 | FastMCP dual transport | Streamable HTTP (`/mcp`) + stdio mode | HTTP for remote/web clients, stdio for local desktop clients (Claude Desktop) |
 | Langfuse opt-in via `lf_span` | Context manager, no-op when unconfigured | Zero overhead in deployments without Langfuse keys — same code path, observability added by setting two env vars |
+| Batch tools for multi-stock queries | `get_daily_summary_batch`, `get_price_history_batch` with `WHERE symbol IN (...)` | One LLM tool call + one DB query for N stocks instead of N calls. Prevents context window exhaustion and rate limiting at scale |
+| Smart refresh — never return data errors | `get_stale_or_missing` check + `refresh_prices_standalone` before serving | Missing or stale data is refreshed synchronously before the response. Tools never return `DATA_UNAVAILABLE` errors — always serve data or a graceful note |
+| Standalone refresh classmethod | Own session per symbol, per-symbol lock + global write lock | Safe for `asyncio.gather` parallel refresh calls. Reusing a shared session across concurrent coroutines causes conflicts |
 
 ## Data Sources
 
@@ -496,7 +503,7 @@ tests/
 | Playground dashboard | ✅ Done |
 | Langfuse observability | ✅ Done |
 | Response validation (hallucination guard) | ✅ Done |
-| Unit test suite (389 tests, 83% coverage) | ✅ Done |
+| Unit test suite (410 tests, 82% coverage) | ✅ Done |
 | CI/CD pipeline (lint, type, security, CVE, secrets, coverage) | ✅ Done |
 | Claude Desktop MCP integration | ✅ Tested |
 | Claude Code MCP integration | ✅ Tested |
@@ -504,6 +511,9 @@ tests/
 | tenacity retries on yfinance adapter | ✅ Done |
 | `asyncio.timeout` on `/chat/stream` | ✅ Done |
 | Real health check (DB ping + LLM reachability) | ✅ Done |
+| Batch tools for multi-stock queries (single DB query, parallel refresh) | ✅ Done |
+| Smart refresh — never return data errors, always serve fresh data | ✅ Done |
+| Pre-commit hooks (ruff, ruff-format, gitleaks, whitespace, yaml/toml) | ✅ Done |
 | Structured JSON logging | 🔜 Planned |
 | Integration tests | 🔜 Planned |
 | VS Code + GitHub Copilot MCP integration | 🔜 Planned |
