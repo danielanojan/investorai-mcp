@@ -197,6 +197,65 @@ class CacheManager:
         result.close()
         return rows
 
+    async def get_prices_multi(
+        self, symbols: list[str], period: str = "1Y"
+    ) -> dict[str, list[PriceHistory]]:
+        """Batch read prices for multiple symbols in a single query."""
+        if not symbols:
+            return {}
+        cutoff = self._period_to_cutoff(period)
+        stmt = (
+            select(PriceHistory)
+            .where(
+                PriceHistory.symbol.in_(symbols),
+                PriceHistory.date >= cutoff,
+            )
+            .order_by(PriceHistory.symbol.asc(), PriceHistory.date.asc())
+        )
+        result = await self._session.execute(stmt)
+        rows = list(result.scalars().all())
+        result.close()
+        grouped: dict[str, list[PriceHistory]] = {}
+        for row in rows:
+            grouped.setdefault(row.symbol, []).append(row)
+        return grouped
+
+    async def get_stale_or_missing(self, symbols: list[str], data_type: str) -> list[str]:
+        """Return symbols whose cache is stale or has never been fetched."""
+        if not symbols:
+            return []
+        stmt = select(CacheMetadata).where(
+            CacheMetadata.symbol.in_(symbols),
+            CacheMetadata.data_type == data_type,
+        )
+        result = await self._session.execute(stmt)
+        existing = {m.symbol: m for m in result.scalars().all()}
+        ttl_hours = TTL_SECONDS[data_type] / 3600
+        needs: list[str] = []
+        for symbol in symbols:
+            meta = existing.get(symbol)
+            if meta is None:
+                needs.append(symbol)
+            elif meta.is_stale or self._age_hours(meta.last_fetched) >= ttl_hours:
+                needs.append(symbol)
+        return needs
+
+    @classmethod
+    async def refresh_prices_standalone(cls, symbol: str, adapter: "DataProviderAdapter") -> None:
+        """Refresh one symbol's prices in its own session. Safe for asyncio.gather calls."""
+        from investorai_mcp.db import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            manager = cls(session, adapter)
+            meta = await manager._get_or_create_meta(symbol, "price_history")
+            lock = _refresh_lock(symbol)
+            async with lock:
+                async with _global_write_lock:
+                    try:
+                        await asyncio.wait_for(manager._refresh_prices(symbol, meta), timeout=60)
+                    except TimeoutError:
+                        logger.error("Refresh timed out for %s after 60s", symbol)
+
     ####### Private : refresh --------------------------
     async def _locked_refresh_prices(
         self, symbol: str, meta: CacheMetadata, lock: asyncio.Lock

@@ -37,35 +37,31 @@ def mock_manager():
         make_row(date(2026, 1, 1), price=150.0, volume=40_000_000),
         make_row(date(2026, 2, 1), price=160.0, volume=50_000_000),
         make_row(date(2026, 3, 1), price=155.0, volume=45_000_000),
-        make_row(date(2026, 3, 15), price=180.0, volume=60_000_000),  # high
+        make_row(date(2026, 3, 15), price=180.0, volume=60_000_000),
         make_row(date(2026, 3, 28), price=170.0, volume=55_000_000),
     ]
     m = MagicMock()
     m.ensure_ticker_exists = AsyncMock(return_value=MagicMock())
+    m.get_stale_or_missing = AsyncMock(return_value=[])
     m.get_prices = AsyncMock(return_value=make_result(rows))
     return m, rows
 
 
-# patch manager only creates an AsyncMock objest. It never calls them.
-# so it stays a regular def.
-# asyncmock is just a regular python object which pretends to be an async
-# when called. Creating it is syncronous. Using inside a rest makes it async.
-
-# async with automatically calls await session.__aeter__() when
-# wntering and await session.__aexit__() when exiting.
-# if its magicMock instead of AsyncMock - python would try to await a non-awaitable
-# object and crash with the  error - MagicMock can't be used with await expression.
-
-
 def patch_manager(manager):
+    """Patch AsyncSessionLocal and CacheManager for the two-session tool flow."""
+    MockCacheManager = MagicMock()
+    MockCacheManager.return_value = manager
+    MockCacheManager.refresh_prices_standalone = AsyncMock()
+
     mock_session = AsyncMock()
     mock_session.__aenter__ = AsyncMock(return_value=mock_session)
     mock_session.__aexit__ = AsyncMock(return_value=False)
+
     return (
         patch(
             "investorai_mcp.tools.get_daily_summary.AsyncSessionLocal", return_value=mock_session
         ),
-        patch("investorai_mcp.tools.get_daily_summary.CacheManager", return_value=manager),
+        patch("investorai_mcp.tools.get_daily_summary.CacheManager", MockCacheManager),
     )
 
 
@@ -115,7 +111,6 @@ async def test_period_return_calculated_correctly(mock_manager):
     with p1, p2:
         result = await get_daily_summary("AAPL")
 
-    # start=150, end=170 -> (170-150)/150 * 100 = 13.33%
     assert result["start_price"] == 150.0
     assert result["end_price"] == 170.0
     assert result["period_return_pct"] == round((170.0 - 150.0) / 150.0 * 100, 2)
@@ -146,7 +141,7 @@ async def test_trading_days_count(mock_manager):
     assert result["trading_days"] == len(rows)
 
 
-async def test_empty_data_returns_error(mock_manager):
+async def test_empty_data_returns_graceful_response(mock_manager):
     from investorai_mcp.tools.get_daily_summary import get_daily_summary
 
     manager, _ = mock_manager
@@ -156,28 +151,69 @@ async def test_empty_data_returns_error(mock_manager):
     with p1, p2:
         result = await get_daily_summary("AAPL")
 
-    assert result["error"] is True
-    assert result["code"] == "DATA_UNAVAILABLE"
+    assert "error" not in result
+    assert result["trading_days"] == 0
+    assert "note" in result
 
 
-async def test_stale_data_flag_propogated(mock_manager):
+async def test_stale_triggers_refresh(mock_manager):
     from investorai_mcp.tools.get_daily_summary import get_daily_summary
 
     manager, rows = mock_manager
-    manager.get_prices = AsyncMock(return_value=make_result(rows, is_stale=True))
+    manager.get_stale_or_missing = AsyncMock(return_value=["AAPL"])
+    manager.get_prices = AsyncMock(return_value=make_result(rows, is_stale=False))
 
-    p1, p2 = patch_manager(manager)
-    with p1, p2:
+    MockCacheManager = MagicMock()
+    MockCacheManager.return_value = manager
+    refresh_mock = AsyncMock()
+    MockCacheManager.refresh_prices_standalone = refresh_mock
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(
+            "investorai_mcp.tools.get_daily_summary.AsyncSessionLocal", return_value=mock_session
+        ),
+        patch("investorai_mcp.tools.get_daily_summary.CacheManager", MockCacheManager),
+    ):
         result = await get_daily_summary("AAPL")
 
-    assert result["is_stale"] is True
+    refresh_mock.assert_called_once()
+    assert result["trading_days"] == len(rows)
+
+
+async def test_fresh_data_skips_refresh(mock_manager):
+    from investorai_mcp.tools.get_daily_summary import get_daily_summary
+
+    manager, rows = mock_manager
+    manager.get_stale_or_missing = AsyncMock(return_value=[])
+
+    MockCacheManager = MagicMock()
+    MockCacheManager.return_value = manager
+    refresh_mock = AsyncMock()
+    MockCacheManager.refresh_prices_standalone = refresh_mock
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=False)
+
+    with (
+        patch(
+            "investorai_mcp.tools.get_daily_summary.AsyncSessionLocal", return_value=mock_session
+        ),
+        patch("investorai_mcp.tools.get_daily_summary.CacheManager", MockCacheManager),
+    ):
+        await get_daily_summary("AAPL")
+
+    refresh_mock.assert_not_called()
 
 
 async def test_volatality_is_non_negative(mock_manager):
     from investorai_mcp.tools.get_daily_summary import get_daily_summary
 
     manager, _ = mock_manager
-
     p1, p2 = patch_manager(manager)
     with p1, p2:
         result = await get_daily_summary("AAPL")

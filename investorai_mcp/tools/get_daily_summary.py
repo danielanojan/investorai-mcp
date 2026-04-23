@@ -1,4 +1,5 @@
 import builtins
+import logging
 import statistics
 from typing import Literal
 
@@ -9,6 +10,8 @@ from investorai_mcp.db import AsyncSessionLocal
 from investorai_mcp.db.cache_manager import CacheManager
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
+
+logger = logging.getLogger(__name__)
 
 _adapter: YFinanceAdapter | None = None
 
@@ -59,17 +62,26 @@ async def get_daily_summary(
             "hint": "Use search_ticker tool to find supported tickers.",
         }
 
+    adapter = _get_adapter()
+
     async with AsyncSessionLocal() as session:
-        manager = CacheManager(session, _get_adapter())
+        manager = CacheManager(session, adapter)
         await manager.ensure_ticker_exists(symbol)
+        needs = await manager.get_stale_or_missing([symbol], "price_history")
+
+    if needs:
+        await CacheManager.refresh_prices_standalone(symbol, adapter)
+
+    async with AsyncSessionLocal() as session:
+        manager = CacheManager(session, adapter)
         result = await manager.get_prices(symbol, range)
 
     if not result.data:
         return {
-            "error": True,
-            "code": "DATA_UNAVAILABLE",
-            "message": f"No price data available for {symbol}",
-            "hint": "Try again in few seconds - a background fetch is in progress.",
+            "symbol": symbol,
+            "range": range,
+            "note": "No price data available for this symbol.",
+            "trading_days": 0,
         }
 
     rows = result.data

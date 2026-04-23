@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from fastmcp import Context
@@ -9,6 +10,8 @@ from investorai_mcp.db.models import PriceHistory
 from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
+
+logger = logging.getLogger(__name__)
 
 _adapter: YFinanceAdapter | None = None
 
@@ -79,22 +82,28 @@ async def get_price_history(
             "hint": " Use search_ticker tool to find supported tickers.",
         }
 
+    adapter = _get_adapter()
+
     with lf_span("get_price_history", input={"symbol": symbol, "range": range}):
         async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _get_adapter())
-
-            # ensure ticker row exists in DB
+            manager = CacheManager(session, adapter)
             await manager.ensure_ticker_exists(symbol)
+            needs = await manager.get_stale_or_missing([symbol], "price_history")
 
-            # Fetch from cache (triggers background refresh if stale)
+        if needs:
+            await CacheManager.refresh_prices_standalone(symbol, adapter)
+
+        async with AsyncSessionLocal() as session:
+            manager = CacheManager(session, adapter)
             result = await manager.get_prices(symbol, range)
 
         if not result.data:
             return {
-                "error": True,
-                "code": "DATA_UNAVAILABLE",
-                "message": f"No price data available for {symbol}",
-                "hint": "Try again in few seconds - a background fetch is in progress.",
+                "symbol": symbol,
+                "range": range,
+                "prices": [],
+                "total_days": 0,
+                "note": "No price data available for this symbol.",
             }
 
         all_prices = [_format_price(row, price_type) for row in result.data]

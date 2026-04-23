@@ -185,6 +185,69 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_daily_summary_batch",
+            "description": (
+                "Return performance statistics for MULTIPLE stocks in a single call. "
+                "Use this instead of calling get_daily_summary N times for broad comparisons, "
+                "sector queries, or rankings across many tickers. One DB query for all symbols."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of uppercase ticker symbols, e.g. ['AAPL', 'MSFT', 'NVDA'].",
+                    },
+                    "range": {
+                        "type": "string",
+                        "enum": ["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"],
+                        "description": "Time range for statistics. Default: '1Y'.",
+                    },
+                },
+                "required": ["symbols"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_price_history_batch",
+            "description": (
+                "Return daily price history for MULTIPLE stocks in a single call. "
+                "Use this instead of calling get_price_history N times. "
+                "Always set limit=52 or less to keep response size manageable."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of uppercase ticker symbols, e.g. ['AAPL', 'MSFT'].",
+                    },
+                    "range": {
+                        "type": "string",
+                        "enum": ["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"],
+                        "description": "Time range. Default: '1Y'.",
+                    },
+                    "price_type": {
+                        "type": "string",
+                        "enum": ["adj_close", "close", "avg_price"],
+                        "description": "Price field to return. Default: 'adj_close'.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max price points per symbol, evenly sampled. Default: 52.",
+                    },
+                },
+                "required": ["symbols"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_news",
             "description": (
                 "Return recent news headlines for a supported stock. "
@@ -312,6 +375,16 @@ async def _dispatch(tool_name: str, tool_args: dict, api_key: str | None) -> Any
 
         return await get_price_history(**tool_args)
 
+    if tool_name == "get_daily_summary_batch":
+        from investorai_mcp.tools.get_daily_summary_batch import get_daily_summary_batch
+
+        return await get_daily_summary_batch(**tool_args)
+
+    if tool_name == "get_price_history_batch":
+        from investorai_mcp.tools.get_price_history_batch import get_price_history_batch
+
+        return await get_price_history_batch(**tool_args)
+
     if tool_name == "get_news":
         from investorai_mcp.tools.get_news import get_news
 
@@ -350,8 +423,10 @@ Do not skip this. It extracts ticker symbols, sector, and time range from the us
 
 **Step 2 — Fetch data. Call ALL required tools in a single turn.**
 Do not make one tool call per turn. Return all tool_calls at once — they execute in parallel.
-- Performance / ranking → `get_daily_summary`
-- Price trends → `get_price_history` (set limit=52 or less)
+- Performance / ranking for **multiple stocks** → `get_daily_summary_batch` (one call, one query)
+- Performance / ranking for a **single stock** → `get_daily_summary`
+- Price trends for **multiple stocks** → `get_price_history_batch` (set limit=52 or less)
+- Price trends for a **single stock** → `get_price_history` (set limit=52 or less)
 - News / recent events → `get_news`
 - Sentiment → `get_news` first, then `get_sentiment` (sentiment requires cached news)
 - Company profile → `get_stock_info`
