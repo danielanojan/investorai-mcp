@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Trash2, Bot, User, Key } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useChat } from '../hooks/useChat'
 import { useBYOK } from '../hooks/useBYOK'
 import BYOKSetup from './BYOKSetup'
@@ -120,7 +121,7 @@ function Message({ message }: { message: ChatMessage }) {
               ? message.content
               : (
                 <>
-                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1"><ReactMarkdown>{message.content}</ReactMarkdown></div>
+                  <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-a:text-blue-600 prose-a:underline"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></div>
                   <SentimentBlock sentiment={message.sentiment} sentiments={message.sentiments} />
                 </>
               )

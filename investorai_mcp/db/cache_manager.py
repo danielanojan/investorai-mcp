@@ -256,6 +256,67 @@ class CacheManager:
                     except TimeoutError:
                         logger.error("Refresh timed out for %s after 60s", symbol)
 
+    @classmethod
+    async def refresh_news_standalone(cls, symbol: str, adapter: "DataProviderAdapter") -> None:
+        """Refresh one symbol's news in its own session. Safe for asyncio.gather calls."""
+        from datetime import UTC, datetime
+
+        from sqlalchemy import delete
+
+        from investorai_mcp.db import AsyncSessionLocal
+        from investorai_mcp.db.models import NewsArticle
+
+        async with AsyncSessionLocal() as session:
+            manager = cls(session, adapter)
+            try:
+                records = await adapter.fetch_news(symbol, limit=50)
+                valid = [
+                    r for r in records if r.headline.strip() and r.source.strip() and r.url.strip()
+                ]
+                if not valid:
+                    return
+                await session.execute(delete(NewsArticle).where(NewsArticle.symbol == symbol))
+                now = datetime.now(UTC)
+                for r in valid:
+                    session.add(
+                        NewsArticle(
+                            symbol=symbol,
+                            headline=r.headline,
+                            source=r.source,
+                            url=r.url,
+                            published_at=r.published_at,
+                            fetched_at=now,
+                        )
+                    )
+                await session.commit()
+                meta = await manager._get_or_create_meta(symbol, "news")
+                await manager._update_meta_success(meta, provider="yfinance")
+            except Exception as e:
+                logger.error("News refresh failed for %s: %s", symbol, e)
+
+    async def get_news_multi(
+        self, symbols: list[str], limit_per_symbol: int = 10
+    ) -> dict[str, list]:
+        """Batch read news for multiple symbols in a single query."""
+        if not symbols:
+            return {}
+        from investorai_mcp.db.models import NewsArticle
+
+        stmt = (
+            select(NewsArticle)
+            .where(NewsArticle.symbol.in_(symbols))
+            .order_by(NewsArticle.symbol.asc(), NewsArticle.published_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        rows = list(result.scalars().all())
+        result.close()
+        grouped: dict[str, list] = {}
+        for row in rows:
+            lst = grouped.setdefault(row.symbol, [])
+            if len(lst) < limit_per_symbol:
+                lst.append(row)
+        return grouped
+
     ####### Private : refresh --------------------------
     async def _locked_refresh_prices(
         self, symbol: str, meta: CacheMetadata, lock: asyncio.Lock

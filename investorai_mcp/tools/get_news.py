@@ -165,6 +165,7 @@ async def get_news(
         articles = [
             {
                 "headline": row.headline,
+                "reference": f"{row.source} — {row.url}",
                 "source": row.source,
                 "url": row.url,
                 "published_at": row.published_at.isoformat(),

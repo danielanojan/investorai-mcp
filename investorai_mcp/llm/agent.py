@@ -250,8 +250,8 @@ TOOL_SCHEMAS = [
         "function": {
             "name": "get_news",
             "description": (
-                "Return recent news headlines for a supported stock. "
-                "Use when the user asks about recent news, events, or what's happening with a stock."
+                "Return recent news headlines for a SINGLE supported stock. "
+                "Use when the user asks about news for one stock only."
             ),
             "parameters": {
                 "type": "object",
@@ -266,6 +266,32 @@ TOOL_SCHEMAS = [
                     },
                 },
                 "required": ["ticker_symbol"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_news_batch",
+            "description": (
+                "Return recent news headlines for MULTIPLE stocks in a single call. "
+                "Use this instead of calling get_news N times for multi-stock news queries. "
+                "Automatically refreshes stale news before returning."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of uppercase ticker symbols, e.g. ['AAPL', 'MSFT'].",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max articles per symbol. Default: 10, max: 50.",
+                    },
+                },
+                "required": ["symbols"],
             },
         },
     },
@@ -390,6 +416,11 @@ async def _dispatch(tool_name: str, tool_args: dict, api_key: str | None) -> Any
 
         return await get_news(**tool_args)
 
+    if tool_name == "get_news_batch":
+        from investorai_mcp.tools.get_news_batch import get_news_batch
+
+        return await get_news_batch(**tool_args)
+
     if tool_name == "get_sentiment":
         from investorai_mcp.tools.get_sentiment import get_sentiment
 
@@ -427,8 +458,9 @@ Do not make one tool call per turn. Return all tool_calls at once — they execu
 - Performance / ranking for a **single stock** → `get_daily_summary`
 - Price trends for **multiple stocks** → `get_price_history_batch` (set limit=52 or less)
 - Price trends for a **single stock** → `get_price_history` (set limit=52 or less)
-- News / recent events → `get_news`
-- Sentiment → `get_news` first, then `get_sentiment` (sentiment requires cached news)
+- News / recent events for **multiple stocks** → `get_news_batch` (one call, one query)
+- News / recent events for a **single stock** → `get_news`
+- Sentiment → `get_news` or `get_news_batch` first, then `get_sentiment` (sentiment requires cached news)
 - Company profile → `get_stock_info`
 
 **Step 3 — Write the answer directly from tool results.**
@@ -549,6 +581,8 @@ async def _emit_side_events(tool_results: list[tuple[str, str]]):
                 "reasoning": result.get("reasoning", ""),
                 "key_themes": result.get("key_themes", []),
             }
+            all_citations.extend(result.get("citations", []))
+        elif tool_name in ("get_trend_summary", "get_news", "get_news_batch"):
             all_citations.extend(result.get("citations", []))
 
     if all_citations:
