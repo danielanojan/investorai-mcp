@@ -6,6 +6,7 @@ Usage:
     uv run python scripts/latency_report.py --limit 20
     uv run python scripts/latency_report.py --since 7d
 """
+
 import argparse
 import asyncio
 import math
@@ -34,19 +35,25 @@ async def report(since_days: int, limit: int) -> None:
     cutoff = datetime.now(UTC) - timedelta(days=since_days)
 
     async with AsyncSessionLocal() as session:
-        rows = (await session.execute(
-            select(ChatRequestLog)
-            .where(ChatRequestLog.ts >= cutoff)
-            .order_by(ChatRequestLog.ts.asc())
-        )).scalars().all()
+        rows = (
+            (
+                await session.execute(
+                    select(ChatRequestLog)
+                    .where(ChatRequestLog.ts >= cutoff)
+                    .order_by(ChatRequestLog.ts.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     if not rows:
         print(f"No chat calls recorded in the last {since_days} days.")
         return
 
     success = [r for r in rows if r.status == "success"]
-    errors  = [r for r in rows if r.status == "error"]
-    lats    = sorted(r.total_latency_ms for r in success)
+    errors = [r for r in rows if r.status == "error"]
+    lats = sorted(r.total_latency_ms for r in success)
 
     p50 = _percentile(lats, 50)
     p95 = _percentile(lats, 95)
@@ -82,8 +89,10 @@ async def report(since_days: int, limit: int) -> None:
         for lower in sorted(buckets):
             count = buckets[lower]
             marker = " ← P95" if lower <= p95 < lower + bucket_ms else ""
-            print(f"  {lower:>6}-{lower+bucket_ms:<6}ms  "
-                  f"{_bar(count, max_count, 25)}  {count:>3}{marker}")
+            print(
+                f"  {lower:>6}-{lower + bucket_ms:<6}ms  "
+                f"{_bar(count, max_count, 25)}  {count:>3}{marker}"
+            )
         print()
 
     # ── Outliers (> P95) ──────────────────────────────────────────────────
@@ -101,10 +110,9 @@ async def report(since_days: int, limit: int) -> None:
         print(f"  {'Latency':>8}  {'Excess':>7}  {'Symbols':<10}  Question")
         print("  " + "-" * 72)
         for r in outliers[:limit]:
-            excess   = r.total_latency_ms - p95
+            excess = r.total_latency_ms - p95
             question = r.question[:55] + "…" if len(r.question) > 55 else r.question
-            print(f"  {r.total_latency_ms:>6} ms  +{excess:>5} ms  "
-                  f"{r.symbols:<10}  {question}")
+            print(f"  {r.total_latency_ms:>6} ms  +{excess:>5} ms  {r.symbols:<10}  {question}")
         if len(outliers) > limit:
             print(f"\n  … {len(outliers) - limit} more (increase --limit to see all)")
     print()
@@ -114,10 +122,12 @@ async def report(since_days: int, limit: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="InvestorAI latency playground")
-    parser.add_argument("--since", default="30d",
-                        help="Look-back window e.g. 7d, 30d (default: 30d)")
-    parser.add_argument("--limit", type=int, default=20,
-                        help="Max outlier rows to display (default: 20)")
+    parser.add_argument(
+        "--since", default="30d", help="Look-back window e.g. 7d, 30d (default: 30d)"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=20, help="Max outlier rows to display (default: 20)"
+    )
     args = parser.parse_args()
 
     since_str = args.since.lower().rstrip("d")

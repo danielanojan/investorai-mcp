@@ -4,6 +4,7 @@ test_api.py covers: 404 paths, missing-field 400s, ticker normalisation.
 This file covers: tool mock success paths, SSE stream, validate, _percentile,
 monitoring/latency, monitoring/langfuse.
 """
+
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -14,9 +15,11 @@ from httpx import ASGITransport, AsyncClient
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def app():
     from investorai_mcp.api import create_app
+
     return create_app()
 
 
@@ -33,25 +36,30 @@ async def client(app):
 # _percentile (pure function — no HTTP needed)
 # ---------------------------------------------------------------------------
 
+
 def test_percentile_empty_returns_zero():
     from investorai_mcp.api.router import _percentile
+
     assert _percentile([], 50) == 0
 
 
 def test_percentile_single_value():
     from investorai_mcp.api.router import _percentile
+
     assert _percentile([100], 50) == 100
     assert _percentile([100], 99) == 100
 
 
 def test_percentile_p50():
     from investorai_mcp.api.router import _percentile
+
     values = sorted([10, 20, 30, 40, 50])
     assert _percentile(values, 50) == 30
 
 
 def test_percentile_p99_returns_near_max():
     from investorai_mcp.api.router import _percentile
+
     values = sorted(range(1, 101))
     assert _percentile(values, 99) == 99
 
@@ -59,6 +67,7 @@ def test_percentile_p99_returns_near_max():
 # ---------------------------------------------------------------------------
 # Health
 # ---------------------------------------------------------------------------
+
 
 async def test_health_ok(client):
     response = await client.get("/api/health")
@@ -100,6 +109,7 @@ class _FakeErrorCtx:
 # Tickers
 # ---------------------------------------------------------------------------
 
+
 async def test_list_tickers_shape(client):
     response = await client.get("/api/tickers")
     assert response.status_code == 200
@@ -128,13 +138,20 @@ async def test_search_tickers_no_match_returns_empty(client):
 # Stock data — success paths (tool mocked)
 # ---------------------------------------------------------------------------
 
+
 async def test_prices_success(client):
     mock_result = {
-        "symbol": "AAPL", "range": "1Y", "prices": [{"date": "2026-01-01", "adj_close": 150.0}],
-        "total_days": 1, "is_stale": False, "data_age_hours": 1.0,
+        "symbol": "AAPL",
+        "range": "1Y",
+        "prices": [{"date": "2026-01-01", "adj_close": 150.0}],
+        "total_days": 1,
+        "is_stale": False,
+        "data_age_hours": 1.0,
     }
-    with patch("investorai_mcp.tools.get_price_history.get_price_history",
-               new=AsyncMock(return_value=mock_result)):
+    with patch(
+        "investorai_mcp.tools.get_price_history.get_price_history",
+        new=AsyncMock(return_value=mock_result),
+    ):
         response = await client.get("/api/stocks/AAPL/prices")
     assert response.status_code == 200
     assert response.json()["symbol"] == "AAPL"
@@ -142,20 +159,32 @@ async def test_prices_success(client):
 
 async def test_prices_tool_error_returns_503(client):
     error_result = {"error": True, "code": "NO_DATA", "message": "No prices found."}
-    with patch("investorai_mcp.tools.get_price_history.get_price_history",
-               new=AsyncMock(return_value=error_result)):
+    with patch(
+        "investorai_mcp.tools.get_price_history.get_price_history",
+        new=AsyncMock(return_value=error_result),
+    ):
         response = await client.get("/api/stocks/AAPL/prices")
     assert response.status_code == 503
 
 
 async def test_summary_success(client):
     mock_result = {
-        "symbol": "AAPL", "range": "1Y", "start_price": 140.0, "end_price": 180.0,
-        "period_return_pct": 28.57, "high_price": 190.0, "low_price": 130.0,
-        "avg_price": 160.0, "volatality_pct": 1.2, "trading_days": 252, "is_stale": False,
+        "symbol": "AAPL",
+        "range": "1Y",
+        "start_price": 140.0,
+        "end_price": 180.0,
+        "period_return_pct": 28.57,
+        "high_price": 190.0,
+        "low_price": 130.0,
+        "avg_price": 160.0,
+        "volatality_pct": 1.2,
+        "trading_days": 252,
+        "is_stale": False,
     }
-    with patch("investorai_mcp.tools.get_daily_summary.get_daily_summary",
-               new=AsyncMock(return_value=mock_result)):
+    with patch(
+        "investorai_mcp.tools.get_daily_summary.get_daily_summary",
+        new=AsyncMock(return_value=mock_result),
+    ):
         response = await client.get("/api/stocks/AAPL/summary")
     assert response.status_code == 200
     assert response.json()["symbol"] == "AAPL"
@@ -163,33 +192,40 @@ async def test_summary_success(client):
 
 async def test_summary_tool_error_returns_503(client):
     error_result = {"error": True, "code": "NO_DATA", "message": "empty"}
-    with patch("investorai_mcp.tools.get_daily_summary.get_daily_summary",
-               new=AsyncMock(return_value=error_result)):
+    with patch(
+        "investorai_mcp.tools.get_daily_summary.get_daily_summary",
+        new=AsyncMock(return_value=error_result),
+    ):
         response = await client.get("/api/stocks/AAPL/summary")
     assert response.status_code == 503
 
 
 async def test_news_success(client):
     mock_result = {"symbol": "AAPL", "articles": [], "count": 0}
-    with patch("investorai_mcp.tools.get_news.get_news",
-               new=AsyncMock(return_value=mock_result)):
+    with patch("investorai_mcp.tools.get_news.get_news", new=AsyncMock(return_value=mock_result)):
         response = await client.get("/api/stocks/AAPL/news")
     assert response.status_code == 200
 
 
 async def test_news_tool_error_returns_503(client):
     error_result = {"error": True, "code": "DB_ERROR", "message": "db failure"}
-    with patch("investorai_mcp.tools.get_news.get_news",
-               new=AsyncMock(return_value=error_result)):
+    with patch("investorai_mcp.tools.get_news.get_news", new=AsyncMock(return_value=error_result)):
         response = await client.get("/api/stocks/AAPL/news")
     assert response.status_code == 503
 
 
 async def test_sentiment_success(client):
-    mock_result = {"symbol": "AAPL", "overall": "positive", "score": 1,
-                   "reasoning": "good", "key_themes": [], "articles_analyzed": 3}
-    with patch("investorai_mcp.tools.get_sentiment.get_sentiment",
-               new=AsyncMock(return_value=mock_result)):
+    mock_result = {
+        "symbol": "AAPL",
+        "overall": "positive",
+        "score": 1,
+        "reasoning": "good",
+        "key_themes": [],
+        "articles_analyzed": 3,
+    }
+    with patch(
+        "investorai_mcp.tools.get_sentiment.get_sentiment", new=AsyncMock(return_value=mock_result)
+    ):
         response = await client.get("/api/stocks/AAPL/sentiment")
     assert response.status_code == 200
     assert response.json()["overall"] == "positive"
@@ -197,18 +233,28 @@ async def test_sentiment_success(client):
 
 async def test_cache_success(client):
     mock_result = {"symbol": "AAPL", "overall_status": "fresh", "entries": []}
-    with patch("investorai_mcp.tools.get_cache_status.get_cache_status",
-               new=AsyncMock(return_value=mock_result)):
+    with patch(
+        "investorai_mcp.tools.get_cache_status.get_cache_status",
+        new=AsyncMock(return_value=mock_result),
+    ):
         response = await client.get("/api/stocks/AAPL/cache")
     assert response.status_code == 200
 
 
 async def test_refresh_success(client):
-    mock_result = {"symbol": "AAPL", "success": True, "records_loaded": 100,
-                   "is_stale": False, "provider_used": "yfinance",
-                   "refreshed_at": "2026-04-22T00:00:00Z", "message": "ok"}
-    with patch("investorai_mcp.tools.refresh_ticker.refresh_ticker",
-               new=AsyncMock(return_value=mock_result)):
+    mock_result = {
+        "symbol": "AAPL",
+        "success": True,
+        "records_loaded": 100,
+        "is_stale": False,
+        "provider_used": "yfinance",
+        "refreshed_at": "2026-04-22T00:00:00Z",
+        "message": "ok",
+    }
+    with patch(
+        "investorai_mcp.tools.refresh_ticker.refresh_ticker",
+        new=AsyncMock(return_value=mock_result),
+    ):
         response = await client.post("/api/stocks/AAPL/refresh")
     assert response.status_code == 200
     assert response.json()["success"] is True
@@ -217,6 +263,7 @@ async def test_refresh_success(client):
 # ---------------------------------------------------------------------------
 # LLM validate
 # ---------------------------------------------------------------------------
+
 
 async def test_llm_validate_success(client):
     mock_response = AsyncMock()
@@ -243,6 +290,7 @@ async def test_llm_validate_bad_key_returns_400(client):
 # /chat/stream — SSE
 # ---------------------------------------------------------------------------
 
+
 async def _read_sse_events(response) -> list[dict]:
     """Parse SSE data lines from a streaming response."""
     events = []
@@ -256,9 +304,11 @@ async def _read_sse_events(response) -> list[dict]:
 
 async def _make_generator(*event_dicts):
     """Build an async generator that yields the given dicts."""
+
     async def _gen():
         for e in event_dicts:
             yield e
+
     return _gen()
 
 
@@ -300,10 +350,13 @@ async def test_chat_stream_yields_start_token_done(client):
         yield {"type": "token", "content": "is good."}
         yield {"type": "done"}
 
-    with patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop), \
-         patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()):
+    with (
+        patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop),
+        patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()),
+    ):
         async with client.stream(
-            "POST", "/api/chat/stream",
+            "POST",
+            "/api/chat/stream",
             json={"symbol": "AAPL", "question": "How is AAPL?"},
             headers={"X-LLM-API-Key": "sk-test"},
         ) as response:
@@ -322,10 +375,13 @@ async def test_chat_stream_yields_thinking_event(client):
         yield {"type": "token", "content": "Answer."}
         yield {"type": "done"}
 
-    with patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop), \
-         patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()):
+    with (
+        patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop),
+        patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()),
+    ):
         async with client.stream(
-            "POST", "/api/chat/stream",
+            "POST",
+            "/api/chat/stream",
             json={"symbol": "AAPL", "question": "How is AAPL?"},
             headers={"X-LLM-API-Key": "sk-test"},
         ) as response:
@@ -341,10 +397,13 @@ async def test_chat_stream_agent_exception_yields_error_event(client):
         raise RuntimeError("agent exploded")
         yield  # make it a generator
 
-    with patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop), \
-         patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()):
+    with (
+        patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop),
+        patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()),
+    ):
         async with client.stream(
-            "POST", "/api/chat/stream",
+            "POST",
+            "/api/chat/stream",
             json={"symbol": "AAPL", "question": "How is AAPL?"},
             headers={"X-LLM-API-Key": "sk-test"},
         ) as response:
@@ -359,10 +418,13 @@ async def test_chat_stream_no_token_yields_error_event(client):
     async def fake_agent_loop(**kwargs):
         yield {"type": "done"}  # done with no token — no response generated
 
-    with patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop), \
-         patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()):
+    with (
+        patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop),
+        patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()),
+    ):
         async with client.stream(
-            "POST", "/api/chat/stream",
+            "POST",
+            "/api/chat/stream",
             json={"symbol": "AAPL", "question": "How is AAPL?"},
             headers={"X-LLM-API-Key": "sk-test"},
         ) as response:
@@ -378,10 +440,13 @@ async def test_chat_stream_sse_headers(client):
         yield {"type": "token", "content": "hi"}
         yield {"type": "done"}
 
-    with patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop), \
-         patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()):
+    with (
+        patch("investorai_mcp.llm.agent.run_agent_loop", new=fake_agent_loop),
+        patch("investorai_mcp.api.router._log_chat_request", new=AsyncMock()),
+    ):
         async with client.stream(
-            "POST", "/api/chat/stream",
+            "POST",
+            "/api/chat/stream",
             json={"symbol": "AAPL", "question": "hi"},
             headers={"X-LLM-API-Key": "sk-test"},
         ) as response:
@@ -393,6 +458,7 @@ async def test_chat_stream_sse_headers(client):
 # ---------------------------------------------------------------------------
 # Monitoring — /monitoring/langfuse
 # ---------------------------------------------------------------------------
+
 
 async def test_langfuse_not_configured_returns_503(client):
     with patch("investorai_mcp.config.settings") as mock_settings:
@@ -418,6 +484,7 @@ async def test_langfuse_http_host_rejected(client):
 # Monitoring — /monitoring/latency
 # ---------------------------------------------------------------------------
 
+
 async def test_latency_endpoint_empty_db(client):
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -431,8 +498,11 @@ async def test_latency_endpoint_empty_db(client):
     real_session = Session()
 
     class _FakeCtx:
-        async def __aenter__(self): return real_session
-        async def __aexit__(self, *a): await real_session.close()
+        async def __aenter__(self):
+            return real_session
+
+        async def __aexit__(self, *a):
+            await real_session.close()
 
     with patch("investorai_mcp.db.AsyncSessionLocal", return_value=_FakeCtx()):
         response = await client.get("/api/monitoring/latency")

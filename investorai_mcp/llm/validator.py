@@ -11,6 +11,7 @@ Design principles:
 - 2% tolerance to allow for rounding differences
 - Skip very large numbers (market caps) that can't be verified
 """
+
 import logging
 import re
 from dataclasses import dataclass, field
@@ -43,21 +44,23 @@ _EXCLUDE_PATTERNS = [
 
 # ── Data classes ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class Violation:
-    claimed:   float
-    actual:    float
+    claimed: float
+    actual: float
     deviation: float
 
 
 @dataclass
 class ValidationResult:
-    passed:     bool
+    passed: bool
     violations: list[Violation] = field(default_factory=list)
-    response:   str = ""
+    response: str = ""
 
 
 # ── Number extraction ─────────────────────────────────────────────────────
+
 
 def extract_numbers(text: str) -> list[float]:
     """
@@ -73,8 +76,7 @@ def extract_numbers(text: str) -> list[float]:
             try:
                 value = float(raw)
 
-                if any(p.match(str(int(value))) for p in _EXCLUDE_PATTERNS
-                       if value == int(value)):
+                if any(p.match(str(int(value))) for p in _EXCLUDE_PATTERNS if value == int(value)):
                     continue
 
                 if value < 0.01:
@@ -110,10 +112,7 @@ def _find_nearest(value: float, ground_truths: list[float]) -> float | None:
     positives = [gt for gt in ground_truths if gt > 0]
     if not positives:
         return None
-    candidates = [
-        gt for gt in positives
-        if abs(gt - value) / max(gt, value) < 0.5
-    ]
+    candidates = [gt for gt in positives if abs(gt - value) / max(gt, value) < 0.5]
     # If nothing is within 50%, fall back to absolute nearest so the
     # deviation check still runs — prevents hallucinated values from
     # being silently skipped.
@@ -122,6 +121,7 @@ def _find_nearest(value: float, ground_truths: list[float]) -> float | None:
 
 
 # ── Validator ─────────────────────────────────────────────────────────────
+
 
 def validate_response(
     response_text: str,
@@ -151,7 +151,7 @@ def validate_response(
     if any(phrase in response_lower for phrase in idk_phrases):
         return ValidationResult(passed=True, response=response_text)
 
-    numbers       = extract_numbers(response_text)
+    numbers = extract_numbers(response_text)
     ground_truths = _get_ground_truths(stats)
     if extra_ground_truths:
         ground_truths = ground_truths + [abs(v) for v in extra_ground_truths if v > 0]
@@ -170,13 +170,17 @@ def validate_response(
         if deviation > TOLERANCE_PCT:
             logger.warning(
                 "Validation failed: claimed=%.4f actual=%.4f deviation=%.2f%%",
-                number, nearest, deviation * 100,
+                number,
+                nearest,
+                deviation * 100,
             )
-            violations.append(Violation(
-                claimed=number,
-                actual=nearest,
-                deviation=round(deviation * 100, 2),
-            ))
+            violations.append(
+                Violation(
+                    claimed=number,
+                    actual=nearest,
+                    deviation=round(deviation * 100, 2),
+                )
+            )
 
     if violations:
         return ValidationResult(
@@ -226,10 +230,17 @@ def validate_multi_response(
     # Build a unified pool of ground truths from ALL stocks
     ground_truths: list[float] = []
     for st in all_stats:
-        ground_truths.extend([
-            st.start_price, st.end_price, st.high_price, st.low_price,
-            st.avg_price, abs(st.period_return_pct), st.volatility_pct,
-        ])
+        ground_truths.extend(
+            [
+                st.start_price,
+                st.end_price,
+                st.high_price,
+                st.low_price,
+                st.avg_price,
+                abs(st.period_return_pct),
+                st.volatility_pct,
+            ]
+        )
 
     violations = []
     for number in numbers:
@@ -242,13 +253,17 @@ def validate_multi_response(
         if deviation > MULTI_TOLERANCE_PCT:
             logger.warning(
                 "Multi validation failed: claimed=%.4f actual=%.4f deviation=%.2f%%",
-                number, nearest, deviation * 100,
+                number,
+                nearest,
+                deviation * 100,
             )
-            violations.append(Violation(
-                claimed=number,
-                actual=nearest,
-                deviation=round(deviation * 100, 2),
-            ))
+            violations.append(
+                Violation(
+                    claimed=number,
+                    actual=nearest,
+                    deviation=round(deviation * 100, 2),
+                )
+            )
 
     if violations:
         return ValidationResult(

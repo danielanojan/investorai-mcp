@@ -37,6 +37,7 @@ PERIOD_MAP = {
 # before the error propagates to the caller.
 # ---------------------------------------------------------------------------
 
+
 @retry(
     retry=retry_if_exception_type((OSError, ConnectionError, TimeoutError)),
     wait=wait_exponential(multiplier=1, min=1, max=8),
@@ -68,15 +69,12 @@ def _sync_fetch_news(symbol: str) -> list[dict]:
 
 
 class YFinanceAdapter(DataProviderAdapter):
-
     async def fetch_ohlcv(self, symbol: str, period: str = "5y") -> list[OHLCVRecord]:
         yf_period = PERIOD_MAP.get(period, period)
         loop = asyncio.get_event_loop()
 
         async with _YF_SEMAPHORE:
-            df = await loop.run_in_executor(
-                None, partial(_sync_fetch_ohlcv, symbol, yf_period)
-            )
+            df = await loop.run_in_executor(None, partial(_sync_fetch_ohlcv, symbol, yf_period))
 
         if df.empty:
             return []
@@ -95,17 +93,19 @@ class YFinanceAdapter(DataProviderAdapter):
             if adj_close <= 0:
                 continue
 
-            records.append(OHLCVRecord(
-                symbol=symbol,
-                date=trade_date,
-                open=open_,
-                high=high,
-                low=low,
-                close=close,
-                adj_close=adj_close,
-                avg_price=round(avg_price, 4),
-                volume=volume,
-            ))
+            records.append(
+                OHLCVRecord(
+                    symbol=symbol,
+                    date=trade_date,
+                    open=open_,
+                    high=high,
+                    low=low,
+                    close=close,
+                    adj_close=adj_close,
+                    avg_price=round(avg_price, 4),
+                    volume=volume,
+                )
+            )
 
         return records
 
@@ -113,9 +113,7 @@ class YFinanceAdapter(DataProviderAdapter):
         loop = asyncio.get_running_loop()
 
         async with _YF_SEMAPHORE:
-            info = await loop.run_in_executor(
-                None, partial(_sync_fetch_info, symbol)
-            )
+            info = await loop.run_in_executor(None, partial(_sync_fetch_info, symbol))
 
         return TickerInfoRecord(
             symbol=symbol,
@@ -131,9 +129,7 @@ class YFinanceAdapter(DataProviderAdapter):
         loop = asyncio.get_running_loop()
 
         async with _YF_SEMAPHORE:
-            raw = await loop.run_in_executor(
-                None, partial(_sync_fetch_news, symbol)
-            )
+            raw = await loop.run_in_executor(None, partial(_sync_fetch_news, symbol))
 
         records = []
         for item in raw[:limit]:
@@ -157,13 +153,15 @@ class YFinanceAdapter(DataProviderAdapter):
                 else:
                     published_at = datetime.fromtimestamp(item.get("providerPublishTime", 0))
 
-                records.append(NewsRecord(
-                    symbol=symbol,
-                    headline=headline,
-                    source=source,
-                    url=url,
-                    published_at=published_at,
-                ))
+                records.append(
+                    NewsRecord(
+                        symbol=symbol,
+                        headline=headline,
+                        source=source,
+                        url=url,
+                        published_at=published_at,
+                    )
+                )
             except Exception:  # noqa: S112
                 continue
 

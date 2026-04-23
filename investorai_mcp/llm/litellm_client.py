@@ -25,6 +25,7 @@ _langfuse = None
 if settings.langfuse_public_key and settings.langfuse_secret_key:
     try:
         from langfuse import Langfuse
+
         _langfuse = Langfuse(
             public_key=settings.langfuse_public_key,
             secret_key=settings.langfuse_secret_key,
@@ -61,8 +62,10 @@ def lf_span(name: str, as_type: str = "span", **kwargs):
     if _langfuse:
         return _langfuse.start_as_current_observation(as_type=as_type, name=name, **kwargs)
     return contextlib.nullcontext()
-    
+
+
 # Log to DB ----------------------------------------
+
 
 async def _log_usage(
     session_hash: str,
@@ -72,27 +75,28 @@ async def _log_usage(
     latency_ms: int,
     status: str,
 ) -> None:
-    """ Write one row to llm_usage_log table"""
+    """Write one row to llm_usage_log table"""
     from investorai_mcp.db import AsyncSessionLocal
     from investorai_mcp.db.models import LLMUsageLog
-    
+
     async with AsyncSessionLocal() as session:
         entry = LLMUsageLog(
             session_hash=session_hash,
-            provider = settings.llm_provider,
-            model = settings.llm_model,
+            provider=settings.llm_provider,
+            model=settings.llm_model,
             tool_name=tool_name,
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             latency_ms=latency_ms,
             status=status,
-            ts = datetime.now(UTC),
+            ts=datetime.now(UTC),
         )
         session.add(entry)
         await session.commit()
-        
-        
+
+
 #### Low-level call — shared by call_llm and run_agent_loop --------------------------------
+
 
 async def _call_llm_raw(
     messages: list[dict],
@@ -112,8 +116,7 @@ async def _call_llm_raw(
     """
     resolved_key = api_key or settings.llm_api_key
     if not resolved_key:
-        raise RuntimeError("No LLM API key configured. "
-                           "Please set llm_api_key in .env file.")
+        raise RuntimeError("No LLM API key configured. Please set llm_api_key in .env file.")
 
     call_kwargs: dict = {
         "model": settings.llm_model,
@@ -205,6 +208,7 @@ async def _call_llm_raw(
 
 #### Public text-only wrapper --------------------------------
 
+
 async def call_llm(
     messages: list[dict],
     session_hash: str = "anonymous",
@@ -221,8 +225,3 @@ async def call_llm(
         api_key=api_key,
     )
     return response.choices[0].message.content or ""
-        
-    
-    
-    
-    

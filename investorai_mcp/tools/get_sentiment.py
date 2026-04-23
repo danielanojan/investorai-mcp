@@ -1,10 +1,11 @@
 """
-get sentiment MCP tool. 
+get sentiment MCP tool.
 
-Scores recent news articles for a ticker and returns 
+Scores recent news articles for a ticker and returns
 an overall sentiment with source citations
 
 """
+
 import hashlib
 import inspect
 from datetime import UTC, datetime
@@ -18,14 +19,14 @@ from investorai_mcp.llm.litellm_client import call_llm, lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
-_SENTIMENT_SYSTEM = """ You are analysing  news sentiment for a stock. 
+_SENTIMENT_SYSTEM = """ You are analysing  news sentiment for a stock.
 Read the headlines provided and return only a JSON object in this exact format:
 {
     "overall": "positive" | "negative" | "neutral",
     "score" <integer -1, 0 or 1>,
     "reasoning" : "<one sentence explanation>".
     "key_themes": ["<theme1>", "<theme2>"]
-    
+
 }
 Do not include any other text. Return only the JSON object"""
 
@@ -33,43 +34,43 @@ Do not include any other text. Return only the JSON object"""
 @mcp.tool()
 async def get_sentiment(
     ticker_symbol: str,
-    limit: int=10,
+    limit: int = 10,
     ctx: Context | None = None,
     api_key: str | None = None,
 ) -> dict:
     """
     Return AI-Powered news sentiment analysis for a supported stock.
-    
-    Reads cached news headlines and scores overall sentiment as 
-    positive, negative, or neutral. Includes source citations 
-    for every article used in the analysis. 
-    
+
+    Reads cached news headlines and scores overall sentiment as
+    positive, negative, or neutral. Includes source citations
+    for every article used in the analysis.
+
     Use this when the user asks:
     - "What is the market sentiment on AAPL?"
     - "Is the news positive or negative for TSLA?"
     - "What are people saying about NVDA?"
-    
+
     Do not call for tickers outside the 50-stock universe.
     Requires a valid LLM_API_KEY in the environment settings.
-    
+
     Args:
         ticker_symbol: Uppercase stock ticker, e.g. AAPL
         limit: Number of recent news articles to consider, default is 10. max 20
-    
+
     Returns:
         Dict with overall sentiment, score, reasoning, key themes, and article citations.
     """
     symbol = ticker_symbol.strip().upper()
     limit = max(1, min(limit, 20))
-    
+
     if not is_supported(symbol):
         return {
-            "error": True, 
+            "error": True,
             "code": "TICKER_NOT_SUPPORTED",
             "message": f"{symbol} is not in the supported universe of 50 stocks.",
-            "hint": "Use search_ticker tool to find supported tickers."
+            "hint": "Use search_ticker tool to find supported tickers.",
         }
-    
+
     with lf_span("get_sentiment", input={"symbol": symbol, "limit": limit}):
         # fetch cached news articles
         async with AsyncSessionLocal() as session:
@@ -101,17 +102,16 @@ async def get_sentiment(
 
         # build headlines block with citations.
         headlines_text = "\n".join(
-            f"- {a.headline} "
-            f"[source: {a.source} • {a.url}]"
-            for a in articles
+            f"- {a.headline} [source: {a.source} • {a.url}]" for a in articles
         )
         session_hash = hashlib.sha256(
             f"{symbol}{datetime.now(UTC).date()}sentiment".encode()
         ).hexdigest()[:16]
 
-        #Call LLM for sentiment analysis
+        # Call LLM for sentiment analysis
         try:
             import json
+
             raw = await call_llm(
                 messages=[
                     {"role": "system", "content": _SENTIMENT_SYSTEM},
@@ -123,15 +123,19 @@ async def get_sentiment(
                 api_key=api_key,
             )
 
-            #parse JSON response
-            #Strip any accidental markdown fences
+            # parse JSON response
+            # Strip any accidental markdown fences
             clean = raw.strip().replace("```json", "").replace("```", "").strip()
             sentiment_data = json.loads(clean)
 
         except (json.JSONDecodeError, ValueError) as e:
             import logging
+
             logging.getLogger(__name__).warning(
-                "Sentiment JSON parse failed for %s: %s | raw: %r", symbol, e, clean if 'clean' in dir() else raw
+                "Sentiment JSON parse failed for %s: %s | raw: %r",
+                symbol,
+                e,
+                clean if "clean" in dir() else raw,
             )
             return {
                 "error": True,

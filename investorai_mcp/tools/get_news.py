@@ -16,13 +16,15 @@ from investorai_mcp.stocks import is_supported
 
 _adapter: YFinanceAdapter | None = None
 
+
 def _get_adapter() -> YFinanceAdapter:
     global _adapter
     if _adapter is None:
         _adapter = YFinanceAdapter()
     return _adapter
 
-async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
+
+async def _fetch_and_store_news(symbol: str, session) -> list[NewsArticle]:
     """Fetch news from yfinance and write to DB. Returns stored news"""
     from sqlalchemy import delete
 
@@ -31,8 +33,7 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
         return []
 
     valid_records = [
-        r for r in records
-        if r.headline.strip() and r.source.strip() and r.url.strip()
+        r for r in records if r.headline.strip() and r.source.strip() and r.url.strip()
     ]
     if not valid_records:
         return []
@@ -42,18 +43,20 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
 
     now = datetime.now(UTC)
     for record in valid_records:
-        session.add(NewsArticle(
-            symbol=symbol,
-            headline=record.headline,
-            source=record.source,
-            url=record.url,
-            published_at=record.published_at,
-            fetched_at=now,
-        ))
+        session.add(
+            NewsArticle(
+                symbol=symbol,
+                headline=record.headline,
+                source=record.source,
+                url=record.url,
+                published_at=record.published_at,
+                fetched_at=now,
+            )
+        )
 
     await session.commit()
 
-    #Return freshly stored news.
+    # Return freshly stored news.
     stmt = (
         select(NewsArticle)
         .where(NewsArticle.symbol == symbol)
@@ -65,63 +68,60 @@ async def _fetch_and_store_news(symbol:str, session) -> list[NewsArticle]:
     result.close()
     return rows
 
+
 @mcp.tool()
 async def get_news(
     ticker_symbol: str,
     limit: int = 10,
-    ctx : Context | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     """
-    Return recent news articles for a supported stock ticker. 
-    
+    Return recent news articles for a supported stock ticker.
+
     Fetches news from the DB cache. If no cache news exists, fetches
-    live from the data provider. Articles include headline, source, url and 
+    live from the data provider. Articles include headline, source, url and
     pblication date
-    
-    
-    Note: AI summaries and sentiment scores are added in a later processing step. 
-    They may be null for recently fetched articles. 
-    
+
+
+    Note: AI summaries and sentiment scores are added in a later processing step.
+    They may be null for recently fetched articles.
+
     Do not call this for tickers outside the 50-stock universe.
     Use search_ticker first if unsure whether a ticker is supported.
-    
-    Args: 
+
+    Args:
         ticker_symbol: Stock ticker symbol, e.g. "AAPL"
         limit: Maximum number of articles to return, default is 10. max is 50
-        
+
     Returns:
         Dict with list of news articles (headline, source, url, published_at) and cache freshness info
     """
     symbol = ticker_symbol.strip().upper()
     limit = max(1, min(50, limit))  # ensure limit is between 1 and 50
-    
-    
+
     if not is_supported(symbol):
         return {
-            "error" : True, 
-            "code" : "TICKER_NOT_SUPPORTED",
-            "message" : f"{symbol} is not in the supported universe of 50 stocks. ",
-            "hint" : "Use search_ticker tool to find supported tickers."
+            "error": True,
+            "code": "TICKER_NOT_SUPPORTED",
+            "message": f"{symbol} is not in the supported universe of 50 stocks. ",
+            "hint": "Use search_ticker tool to find supported tickers.",
         }
-        
+
     with lf_span("get_news", input={"symbol": symbol, "limit": limit}):
         async with AsyncSessionLocal() as session:
             manager = CacheManager(session, _get_adapter())
             await manager.ensure_ticker_exists(symbol)
 
-            #check if we have cached news and whether its fresh.
+            # check if we have cached news and whether its fresh.
             meta_stmt = select(CacheMetadata).where(
-                CacheMetadata.symbol == symbol,
-                CacheMetadata.data_type == "news"
+                CacheMetadata.symbol == symbol, CacheMetadata.data_type == "news"
             )
             meta_result = await session.execute(meta_stmt)
             meta = meta_result.scalar_one_or_none()
             meta_result.close()
 
             ttl_hours = TTL_SECONDS["news"] / 3600
-            age_hours = CacheManager._age_hours(
-                meta.last_fetched if meta else None
-            )
+            age_hours = CacheManager._age_hours(meta.last_fetched if meta else None)
 
             is_stale = meta is None or meta.is_stale or age_hours >= ttl_hours
 
@@ -142,7 +142,7 @@ async def get_news(
                     rows = list(result.scalars().all())
                     result.close()
             else:
-                #serve from DB
+                # serve from DB
                 stmt = (
                     select(NewsArticle)
                     .where(NewsArticle.symbol == symbol)
@@ -178,5 +178,5 @@ async def get_news(
             "articles": articles,
             "total": len(articles),
             "is_stale": is_stale,
-            "age_hours": round(age_hours, 2) if age_hours != float('inf') else None,
+            "age_hours": round(age_hours, 2) if age_hours != float("inf") else None,
         }

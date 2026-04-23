@@ -286,6 +286,62 @@ InvestorAI is a Python/FastAPI backend with a React + Vite + Tailwind frontend. 
 
 **Frontend:** React 18 + Vite, Tailwind CSS. Components include `PriceChart`, `NewsFeed`, `StatsCard`, `ChatPanel` (with live thinking indicator, `SentimentBadge` + `SentimentBlock`), `TickerSelector`, `BYOKSetup`, and `MonitoringDashboard`. API keys are stored in browser localStorage only — never sent to the server outside of request headers.
 
+## Agent Workflow
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Router as FastAPI /chat/stream
+    participant Agent as ReAct Agent Loop
+    participant LLM as LiteLLM (Claude/OpenAI/Groq)
+    participant Tools as MCP Tools
+    participant YF as yfinance (semaphore=5)
+    participant DB as SQLite / PostgreSQL
+
+    Browser->>Router: POST /chat/stream<br/>{ question, symbol }<br/>X-LLM-API-Key header
+    Router->>Router: validate key + symbol
+    Router-->>Browser: SSE: start
+
+    loop ReAct iterations (max 8)
+        Router->>Agent: run_agent_loop(question, api_key)
+        Agent->>LLM: messages + tool schemas
+        LLM-->>Agent: tool_calls [ ]
+
+        Router-->>Browser: SSE: thinking { tools, iteration }
+
+        par parallel tool execution (asyncio.gather)
+            Agent->>Tools: get_price_history(symbol, range)
+            Tools->>DB: SELECT price rows
+            DB-->>Tools: OHLCV rows
+            Tools-->>Agent: result JSON
+        and
+            Agent->>Tools: get_sentiment(symbol)
+            Tools->>LLM: sentiment prompt
+            LLM-->>Tools: sentiment JSON
+            Tools-->>Agent: result JSON
+        and
+            Agent->>Tools: get_news(symbol)
+            Tools->>YF: fetch_news() [semaphore slot]
+            note over YF: tenacity retry on<br/>OSError/Timeout (3×)
+            YF-->>Tools: headlines
+            Tools->>DB: upsert news rows
+            Tools-->>Agent: result JSON
+        end
+
+        Agent->>LLM: tool results → next message
+        LLM-->>Agent: final text response
+    end
+
+    Agent->>Agent: _emit_side_events(collected_tool_results)
+    Agent-->>Router: SSE: citations { citations[] }
+    Agent-->>Router: SSE: sentiment / sentiments
+    Agent-->>Router: SSE: token (word by word)
+    Agent-->>Router: SSE: done
+
+    Router->>DB: INSERT chat_log row (async, non-blocking)
+    Router-->>Browser: SSE: done
+```
+
 ## Playground Dashboard
 
 The `/` route serves the React playground — a unified interface for stock research and system observability.
@@ -445,9 +501,9 @@ tests/
 | Claude Desktop MCP integration | ✅ Tested |
 | Claude Code MCP integration | ✅ Tested |
 | Railway deployment (PostgreSQL) | ✅ Done |
-| tenacity retries on yfinance adapter | 🔜 Planned |
-| `asyncio.timeout` on `/chat/stream` | 🔜 Planned |
-| Real health check (DB ping + LLM reachability) | 🔜 Planned |
+| tenacity retries on yfinance adapter | ✅ Done |
+| `asyncio.timeout` on `/chat/stream` | ✅ Done |
+| Real health check (DB ping + LLM reachability) | ✅ Done |
 | Structured JSON logging | 🔜 Planned |
 | Integration tests | 🔜 Planned |
 | VS Code + GitHub Copilot MCP integration | 🔜 Planned |

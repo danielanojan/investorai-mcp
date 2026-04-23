@@ -1,9 +1,9 @@
 """
 Prompt Builder for InvestorAI
 
-Converts raw DB price rows into PriceSummaryStats. 
-Then builds the LLM prompt. Raw OHLCV rows never 
-enter the LLM context - only pre-computed statistics. 
+Converts raw DB price rows into PriceSummaryStats.
+Then builds the LLM prompt. Raw OHLCV rows never
+enter the LLM context - only pre-computed statistics.
 """
 
 import statistics
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from investorai_mcp.db.models import NewsArticle, PriceHistory
 
 ### ---- Closed-context system prompt -----------------------
-#DO NOT CHANGE without re-running the full eval suite at 98% pass rate.
+# DO NOT CHANGE without re-running the full eval suite at 98% pass rate.
 
 SYSTEM_PROMPT = """ You are a stock research assistant for casual retail investors.
 
@@ -56,12 +56,14 @@ Output ONLY Step 5. Do not show the intermediate steps.
 
 # ---- PriceSummaryStats------------------------
 
+
 @dataclass
 class PriceSummaryStats:
     """
-    Pre-computed statictics from price history news. 
+    Pre-computed statictics from price history news.
     This is what gets passsed to the LLM - never raw rows.
     """
+
     ticker_symbol: str
     range: str
     start_date: str
@@ -77,11 +79,10 @@ class PriceSummaryStats:
     avg_daily_volume: float
     volatility_pct: float
     trading_days: int
-    
-    
+
     def to_text(self) -> str:
         """
-        Format stats as plain text for the LLM prompt. 
+        Format stats as plain text for the LLM prompt.
         Keeps the data back under ~200 tokens.
         """
         direction = "up" if self.period_return_pct >= 0 else "down"
@@ -99,7 +100,9 @@ class PriceSummaryStats:
             f"- Trading days in period: {self.trading_days}\n"
         )
 
-#-------Stats computation ----------------------------------
+
+# -------Stats computation ----------------------------------
+
 
 def compute_stats(
     symbol: str,
@@ -107,32 +110,31 @@ def compute_stats(
     rows: list[PriceHistory],
 ) -> PriceSummaryStats | None:
     """
-    Compute PriceSummaryStats from a list of PriceHistory rows. 
+    Compute PriceSummaryStats from a list of PriceHistory rows.
     Returns None if rows is empty
     """
     if not rows:
         return None
-    
+
     adj_closes = [row.adj_close for row in rows]
     volumes = [row.volume for row in rows]
-    
+
     start_price = adj_closes[0]
     end_price = adj_closes[-1]
-    
+
     period_return_pct = (
-        round((end_price - start_price) / start_price * 100, 2)
-        if start_price > 0 else 0
+        round((end_price - start_price) / start_price * 100, 2) if start_price > 0 else 0
     )
-    
+
     high_price = max(adj_closes)
     low_price = min(adj_closes)
     high_date = rows[adj_closes.index(high_price)].date
     low_date = rows[adj_closes.index(low_price)].date
-    
+
     avg_price = round(statistics.mean(adj_closes), 2)
     avg_volume = round(statistics.mean(volumes))
-    
-    #annualised volatality - std dev of daily returns × √252
+
+    # annualised volatality - std dev of daily returns × √252
     volatility_pct = 0.0
     if len(adj_closes) >= 2:
         daily_returns = [
@@ -140,10 +142,8 @@ def compute_stats(
             for i in range(1, len(adj_closes))
         ]
         if len(daily_returns) >= 2:
-            volatility_pct = round(
-                statistics.stdev(daily_returns) * (252 ** 0.5) * 100, 2
-            )
-    
+            volatility_pct = round(statistics.stdev(daily_returns) * (252**0.5) * 100, 2)
+
     return PriceSummaryStats(
         ticker_symbol=symbol,
         range=period,
@@ -161,8 +161,10 @@ def compute_stats(
         volatility_pct=volatility_pct,
         trading_days=len(rows),
     )
-    
+
+
 ### ---- Prompt Builder ----------------------------------
+
 
 def build_prompt(
     stats: PriceSummaryStats,
@@ -174,39 +176,38 @@ def build_prompt(
 ) -> list[dict]:
     """
     Build the full message list for LLM call
-    
+
     Structure:
         1. System Prompt (closed-context rules)
         2. Earlier conversation summary (if history provided)
         3. Stock data block (PriceSummaryStats as text)
         4. News articles (if provided)
         5. User question
-    
+
     Args:
-        Stats: Pre-computed price statistics. 
-        question: The user's question. 
-        news: Optional list of recent news articles. 
-        history: Optional compressed conversation history. 
-        
-    Returns: 
+        Stats: Pre-computed price statistics.
+        question: The user's question.
+        news: Optional list of recent news articles.
+        history: Optional compressed conversation history.
+
+    Returns:
         List of message dicts ready for call_llm()
     """
     messages = [{"role": "system", "content": COT_SYSTEM_PROMPT if use_cot else SYSTEM_PROMPT}]
-    
-    # add compressed history if provided. 
+
+    # add compressed history if provided.
     # (history already compressed by ChatHistoryManager)
     if history:
         messages.extend(history)
-        
-    # build the data block - this is what the LLM reasons from 
+
+    # build the data block - this is what the LLM reasons from
     data_block = stats.to_text()
-    
+
     # Add news headlines if provided (max 5 to keep tokens low)
     news_block = ""
     if news:
         headlines = [
-            f"- {article.headline} ({article.source} • {article.url})"
-            for article in news[:10]
+            f"- {article.headline} ({article.source} • {article.url})" for article in news[:10]
         ]
         if headlines:
             news_block = "RECENT NEWS:\n" + "\n".join(headlines) + "\n"
@@ -221,11 +222,7 @@ def build_prompt(
             f"Only reference price data if directly relevant to the question."
         )
     else:
-        user_content = (
-            f"DATA_PROVIDED:\n{data_block}"
-            f"\n{news_block}"
-            f"\nUser question:\n{question}"
-        )
-    
+        user_content = f"DATA_PROVIDED:\n{data_block}\n{news_block}\nUser question:\n{question}"
+
     messages.append({"role": "user", "content": user_content})
     return messages
