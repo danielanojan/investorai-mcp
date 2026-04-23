@@ -185,6 +185,69 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_daily_summary_batch",
+            "description": (
+                "Return performance statistics for MULTIPLE stocks in a single call. "
+                "Use this instead of calling get_daily_summary N times for broad comparisons, "
+                "sector queries, or rankings across many tickers. One DB query for all symbols."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of uppercase ticker symbols, e.g. ['AAPL', 'MSFT', 'NVDA'].",
+                    },
+                    "range": {
+                        "type": "string",
+                        "enum": ["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"],
+                        "description": "Time range for statistics. Default: '1Y'.",
+                    },
+                },
+                "required": ["symbols"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_price_history_batch",
+            "description": (
+                "Return daily price history for MULTIPLE stocks in a single call. "
+                "Use this instead of calling get_price_history N times. "
+                "Always set limit=52 or less to keep response size manageable."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbols": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of uppercase ticker symbols, e.g. ['AAPL', 'MSFT'].",
+                    },
+                    "range": {
+                        "type": "string",
+                        "enum": ["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"],
+                        "description": "Time range. Default: '1Y'.",
+                    },
+                    "price_type": {
+                        "type": "string",
+                        "enum": ["adj_close", "close", "avg_price"],
+                        "description": "Price field to return. Default: 'adj_close'.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max price points per symbol, evenly sampled. Default: 52.",
+                    },
+                },
+                "required": ["symbols"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_news",
             "description": (
                 "Return recent news headlines for a supported stock. "
@@ -280,45 +343,66 @@ TOOL_SCHEMAS = [
 # api_key injected here — never exposed in tool schemas
 # ---------------------------------------------------------------------------
 
+
 async def _dispatch(tool_name: str, tool_args: dict, api_key: str | None) -> Any:
     if tool_name == "parse_question":
         from investorai_mcp.tools.parse_question import parse_question
+
         return await parse_question(**tool_args)
 
     if tool_name == "get_system_info":
         from investorai_mcp.tools.get_system_info import get_system_info
+
         return await get_system_info(**tool_args)
 
     if tool_name == "search_ticker":
         from investorai_mcp.tools.search_ticker import search_ticker
+
         return await search_ticker(**tool_args)
 
     if tool_name == "get_stock_info":
         from investorai_mcp.tools.get_stock_info import get_stock_info
+
         return await get_stock_info(**tool_args)
 
     if tool_name == "get_daily_summary":
         from investorai_mcp.tools.get_daily_summary import get_daily_summary
+
         return await get_daily_summary(**tool_args)
 
     if tool_name == "get_price_history":
         from investorai_mcp.tools.get_price_history import get_price_history
+
         return await get_price_history(**tool_args)
+
+    if tool_name == "get_daily_summary_batch":
+        from investorai_mcp.tools.get_daily_summary_batch import get_daily_summary_batch
+
+        return await get_daily_summary_batch(**tool_args)
+
+    if tool_name == "get_price_history_batch":
+        from investorai_mcp.tools.get_price_history_batch import get_price_history_batch
+
+        return await get_price_history_batch(**tool_args)
 
     if tool_name == "get_news":
         from investorai_mcp.tools.get_news import get_news
+
         return await get_news(**tool_args)
 
     if tool_name == "get_sentiment":
         from investorai_mcp.tools.get_sentiment import get_sentiment
+
         return await get_sentiment(**tool_args, api_key=api_key)
 
     if tool_name == "get_cache_status":
         from investorai_mcp.tools.get_cache_status import get_cache_status
+
         return await get_cache_status(**tool_args)
 
     if tool_name == "refresh_ticker":
         from investorai_mcp.tools.refresh_ticker import refresh_ticker
+
         return await refresh_ticker(**tool_args)
 
     raise ValueError(f"Unknown tool: {tool_name}")
@@ -339,8 +423,10 @@ Do not skip this. It extracts ticker symbols, sector, and time range from the us
 
 **Step 2 — Fetch data. Call ALL required tools in a single turn.**
 Do not make one tool call per turn. Return all tool_calls at once — they execute in parallel.
-- Performance / ranking → `get_daily_summary`
-- Price trends → `get_price_history` (set limit=52 or less)
+- Performance / ranking for **multiple stocks** → `get_daily_summary_batch` (one call, one query)
+- Performance / ranking for a **single stock** → `get_daily_summary`
+- Price trends for **multiple stocks** → `get_price_history_batch` (set limit=52 or less)
+- Price trends for a **single stock** → `get_price_history` (set limit=52 or less)
 - News / recent events → `get_news`
 - Sentiment → `get_news` first, then `get_sentiment` (sentiment requires cached news)
 - Company profile → `get_stock_info`
@@ -363,6 +449,7 @@ Do not make one tool call per turn. Return all tool_calls at once — they execu
 # ReAct loop
 # ---------------------------------------------------------------------------
 
+
 async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str, str]:
     """Execute one tool call and return (tool_call_id, tool_name, result_json)."""
     tool_name = tc.function.name
@@ -371,13 +458,21 @@ async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str, str]:
     try:
         tool_args = json.loads(tc.function.arguments)
     except (json.JSONDecodeError, ValueError):
-        logger.warning("Failed to parse tool arguments for %s: %r", tool_name, tc.function.arguments)
-        return tc.id, tool_name, json.dumps({
-            "error": True,
-            "code": "INVALID_TOOL_ARGS",
-            "message": f"Could not parse arguments for {tool_name}. Try again with valid JSON arguments.",
-            "retryable": True,
-        })
+        logger.warning(
+            "Failed to parse tool arguments for %s: %r", tool_name, tc.function.arguments
+        )
+        return (
+            tc.id,
+            tool_name,
+            json.dumps(
+                {
+                    "error": True,
+                    "code": "INVALID_TOOL_ARGS",
+                    "message": f"Could not parse arguments for {tool_name}. Try again with valid JSON arguments.",
+                    "retryable": True,
+                }
+            ),
+        )
 
     logger.info("Agent tool: %s %s", tool_name, tool_args)
 
@@ -386,25 +481,46 @@ async def _execute_tool_call(tc, api_key: str | None) -> tuple[str, str, str]:
         return tc.id, tool_name, json.dumps(result, default=str)
     except TimeoutError:
         logger.warning("Tool %s timed out", tool_name)
-        return tc.id, tool_name, json.dumps({
-            "error": True, "code": "TIMEOUT",
-            "message": f"{tool_name} timed out. Try again or use a smaller date range.",
-            "retryable": True,
-        })
+        return (
+            tc.id,
+            tool_name,
+            json.dumps(
+                {
+                    "error": True,
+                    "code": "TIMEOUT",
+                    "message": f"{tool_name} timed out. Try again or use a smaller date range.",
+                    "retryable": True,
+                }
+            ),
+        )
     except ValueError as e:
         logger.warning("Tool %s bad arguments: %s", tool_name, e)
-        return tc.id, tool_name, json.dumps({
-            "error": True, "code": "BAD_ARGS",
-            "message": str(e),
-            "retryable": False,
-        })
+        return (
+            tc.id,
+            tool_name,
+            json.dumps(
+                {
+                    "error": True,
+                    "code": "BAD_ARGS",
+                    "message": str(e),
+                    "retryable": False,
+                }
+            ),
+        )
     except Exception as e:
         logger.warning("Tool %s failed: %s", tool_name, e)
-        return tc.id, tool_name, json.dumps({
-            "error": True, "code": "TOOL_ERROR",
-            "message": str(e),
-            "retryable": True,
-        })
+        return (
+            tc.id,
+            tool_name,
+            json.dumps(
+                {
+                    "error": True,
+                    "code": "TOOL_ERROR",
+                    "message": str(e),
+                    "retryable": True,
+                }
+            ),
+        )
 
 
 async def _emit_side_events(tool_results: list[tuple[str, str]]):
@@ -428,9 +544,9 @@ async def _emit_side_events(tool_results: list[tuple[str, str]]):
         if tool_name == "get_sentiment":
             symbol = result.get("symbol", "")
             sentiments[symbol] = {
-                "overall":    result.get("sentiment", "neutral"),
-                "score":      result.get("score", 0),
-                "reasoning":  result.get("reasoning", ""),
+                "overall": result.get("sentiment", "neutral"),
+                "score": result.get("score", 0),
+                "reasoning": result.get("reasoning", ""),
                 "key_themes": result.get("key_themes", []),
             }
             all_citations.extend(result.get("citations", []))
@@ -485,13 +601,18 @@ async def run_agent_loop(
         token_estimate = count_tokens_approx(messages)
         if token_estimate > _TOKEN_HARD_LIMIT:
             logger.error("Agent context too large (~%d tokens), aborting loop", token_estimate)
-            yield {"type": "token", "content": "The query requires too much data to process. Please ask about fewer stocks or a shorter time range."}
+            yield {
+                "type": "token",
+                "content": "The query requires too much data to process. Please ask about fewer stocks or a shorter time range.",
+            }
             async for event in _emit_side_events(collected_tool_results):
                 yield event
             yield {"type": "done"}
             return
         if token_estimate > _TOKEN_WARN_LIMIT:
-            logger.warning("Agent context large: ~%d tokens at iteration %d", token_estimate, iteration + 1)
+            logger.warning(
+                "Agent context large: ~%d tokens at iteration %d", token_estimate, iteration + 1
+            )
 
         response = await _call_llm_raw(
             messages=messages,
@@ -508,7 +629,7 @@ async def run_agent_loop(
         # No tool calls — LLM has final answer, stream it word by word
         if not msg.tool_calls:
             final_text = msg.content or ""
-            words = final_text.split(" ")
+            words = [w for w in final_text.split(" ") if w]
             for i, word in enumerate(words):
                 yield {"type": "token", "content": word + (" " if i < len(words) - 1 else "")}
             async for event in _emit_side_events(collected_tool_results):
@@ -524,9 +645,7 @@ async def run_agent_loop(
         messages.append(msg.model_dump(exclude_unset=True))
 
         # Execute all tool calls in this turn concurrently
-        results = await asyncio.gather(
-            *[_execute_tool_call(tc, api_key) for tc in msg.tool_calls]
-        )
+        results = await asyncio.gather(*[_execute_tool_call(tc, api_key) for tc in msg.tool_calls])
 
         logger.info(
             "Iteration %d: executed %d tool call(s): %s",
@@ -537,14 +656,19 @@ async def run_agent_loop(
 
         for tool_call_id, tool_name, result_str in results:
             collected_tool_results.append((tool_name, result_str))
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": result_str,
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": result_str,
+                }
+            )
 
     logger.warning("Agent loop hit max_iterations (%d)", max_iterations)
-    yield {"type": "token", "content": "I reached the maximum number of tool calls without completing. Please try a more specific question."}
+    yield {
+        "type": "token",
+        "content": "I reached the maximum number of tool calls without completing. Please try a more specific question.",
+    }
     async for event in _emit_side_events(collected_tool_results):
         yield event
     yield {"type": "done"}

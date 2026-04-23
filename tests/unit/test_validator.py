@@ -1,4 +1,5 @@
 """Tests for the post-generation validator."""
+
 from datetime import date
 
 import pytest
@@ -34,6 +35,7 @@ def sample_stats():
 
 
 # ── extract_numbers ───────────────────────────────────────────────────────
+
 
 def test_extracts_dollar_price():
     assert 174.32 in extract_numbers("AAPL closed at $174.32")
@@ -88,6 +90,7 @@ def test_deduplicates_numbers():
 
 
 # ── validate_response ─────────────────────────────────────────────────────
+
 
 def test_valid_response_passes(sample_stats):
     response = (

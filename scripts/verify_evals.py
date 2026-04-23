@@ -9,6 +9,7 @@ Usage:
     uv run python scripts/verify_evals.py
     uv run python scripts/verify_evals.py --fix   # auto-fix mismatches
 """
+
 import asyncio
 import json
 import sys
@@ -33,7 +34,7 @@ async def verify_pair(session, pair: dict) -> tuple[bool, str]:
     """
     category = pair["category"]
     expected = pair["expected"]
-    symbol   = pair.get("symbol")
+    symbol = pair.get("symbol")
 
     # Out of scope and pre-verified edge cases — skip
     if pair.get("verified"):
@@ -51,16 +52,18 @@ async def verify_pair(session, pair: dict) -> tuple[bool, str]:
 
         # Extract date from question
         import re
+
         date_match = re.search(r"\d{4}-\d{2}-\d{2}", pair["question"])
         if not date_match:
             return False, "no date in question"
 
         from datetime import date as date_type
+
         trade_date = date_type.fromisoformat(date_match.group())
 
         stmt = select(PriceHistory).where(
             PriceHistory.symbol == symbol,
-            PriceHistory.date   == trade_date,
+            PriceHistory.date == trade_date,
         )
         result = await session.execute(stmt)
         row = result.scalar_one_or_none()
@@ -68,13 +71,13 @@ async def verify_pair(session, pair: dict) -> tuple[bool, str]:
         if not row:
             return False, f"no DB row for {symbol} on {trade_date}"
 
-        actual    = round(row.adj_close, 2)
+        actual = round(row.adj_close, 2)
         deviation = abs(actual - expected_price) / actual if actual > 0 else 0
 
         if deviation > TOLERANCE:
             return False, (
                 f"mismatch: expected={expected_price} "
-                f"actual={actual} deviation={deviation*100:.2f}%"
+                f"actual={actual} deviation={deviation * 100:.2f}%"
             )
         return True, f"verified: {actual}"
 
@@ -87,31 +90,27 @@ async def verify_pair(session, pair: dict) -> tuple[bool, str]:
 
         from datetime import date as date_type
         from datetime import timedelta
+
         cutoff = date_type.today() - timedelta(days=365)
         stmt = (
             select(PriceHistory)
             .where(
                 PriceHistory.symbol == symbol,
-                PriceHistory.date   >= cutoff,
+                PriceHistory.date >= cutoff,
             )
             .order_by(PriceHistory.date.asc())
         )
         result = await session.execute(stmt)
-        rows   = list(result.scalars().all())
+        rows = list(result.scalars().all())
 
         if len(rows) < 5:
             return False, "not enough rows"
 
-        actual_pct = round(
-            (rows[-1].adj_close - rows[0].adj_close) / rows[0].adj_close * 100, 2
-        )
+        actual_pct = round((rows[-1].adj_close - rows[0].adj_close) / rows[0].adj_close * 100, 2)
         deviation = abs(actual_pct - expected_pct) / max(abs(actual_pct), 0.01)
 
         if deviation > 0.05:  # 5% tolerance on percentages
-            return False, (
-                f"pct mismatch: expected={expected_pct}% "
-                f"actual={actual_pct}%"
-            )
+            return False, (f"pct mismatch: expected={expected_pct}% actual={actual_pct}%")
         return True, f"verified: {actual_pct}%"
 
     # Other categories — mark as needs manual review
@@ -129,14 +128,13 @@ async def main(fix: bool = False):
 
     print(f"Verifying {len(pairs)} eval pairs...")
 
-    engine  = create_async_engine(settings.database_url, echo=False)
-    Session = async_sessionmaker(engine, class_=AsyncSession,
-                                 expire_on_commit=False)
+    engine = create_async_engine(settings.database_url, echo=False)
+    Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
-    correct        = 0
-    wrong          = 0
-    needs_manual   = 0
-    wrong_pairs    = []
+    correct = 0
+    wrong = 0
+    needs_manual = 0
+    wrong_pairs = []
 
     async with Session() as session:
         for i, pair in enumerate(pairs):
@@ -144,8 +142,10 @@ async def main(fix: bool = False):
 
             if "needs manual" in msg:
                 needs_manual += 1
-                print(f"  [{i+1:3d}] MANUAL  {pair['category']:15s} "
-                      f"{pair.get('symbol','N/A'):8s} {pair['question'][:50]}")
+                print(
+                    f"  [{i + 1:3d}] MANUAL  {pair['category']:15s} "
+                    f"{pair.get('symbol', 'N/A'):8s} {pair['question'][:50]}"
+                )
             elif is_ok:
                 correct += 1
                 if fix:
@@ -153,8 +153,10 @@ async def main(fix: bool = False):
             else:
                 wrong += 1
                 wrong_pairs.append((i, pair, msg))
-                print(f"  [{i+1:3d}] WRONG   {pair['category']:15s} "
-                      f"{pair.get('symbol','N/A'):8s} {msg}")
+                print(
+                    f"  [{i + 1:3d}] WRONG   {pair['category']:15s} "
+                    f"{pair.get('symbol', 'N/A'):8s} {msg}"
+                )
 
     await engine.dispose()
 
@@ -180,8 +182,8 @@ async def main(fix: bool = False):
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fix", action="store_true",
-                        help="Auto-fix price_fact mismatches")
+    parser.add_argument("--fix", action="store_true", help="Auto-fix price_fact mismatches")
     args = parser.parse_args()
     asyncio.run(main(fix=args.fix))

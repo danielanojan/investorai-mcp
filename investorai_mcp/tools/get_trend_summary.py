@@ -6,6 +6,7 @@ Supports any stock in the 50-stock universe regardless of
 which stock is currently loaded in the web UI.
 Auto-detects time range from natural language questions.
 """
+
 import hashlib
 import time as _time
 from datetime import UTC, date, datetime
@@ -62,6 +63,7 @@ async def _analyse_one_symbol(
 ) -> dict:
     """Fetch data, call LLM, validate, and return summary for one symbol."""
     import asyncio as _asyncio
+
     _t_db = _time.perf_counter_ns()
     price_result, stock_info_result = await _asyncio.gather(
         get_price_history(symbol, effective_range),
@@ -71,8 +73,8 @@ async def _analyse_one_symbol(
 
     if price_result.get("error"):
         return {
-            "error":   True,
-            "code":    price_result["code"],
+            "error": True,
+            "code": price_result["code"],
             "message": price_result["message"],
         }
 
@@ -86,24 +88,21 @@ async def _analyse_one_symbol(
         rows = [r for r in rows if dr_start <= r.date <= dr_end]
         if not rows:
             return {
-                "symbol":            symbol,
-                "range":             effective_range,
-                "summary":           (
-                    f"No trading data for {symbol} between "
-                    f"{dr_start} and {dr_end}."
-                ),
-                "citations":         [],
+                "symbol": symbol,
+                "range": effective_range,
+                "summary": (f"No trading data for {symbol} between {dr_start} and {dr_end}."),
+                "citations": [],
                 "validation_passed": True,
-                "is_stale":          is_stale,
-                "data_age_hours":    round(data_age_hours, 2),
-                "stats":             {},
+                "is_stale": is_stale,
+                "data_age_hours": round(data_age_hours, 2),
+                "stats": {},
             }
 
     stats = compute_stats(symbol, effective_range, rows)
     if stats is None:
         return {
-            "error":   True,
-            "code":    "DATA_UNAVAILABLE",
+            "error": True,
+            "code": "DATA_UNAVAILABLE",
             "message": f"Could not compute statistics for {symbol}.",
         }
 
@@ -111,48 +110,43 @@ async def _analyse_one_symbol(
     # no LLM needed. Avoids history leaking from other stocks and is
     # always accurate since the price comes straight from the cache.
     if resolved_date is not None:
-        date_row = next(
-            (r for r in rows if r.date == resolved_date), None
-        )
+        date_row = next((r for r in rows if r.date == resolved_date), None)
         if date_row:
             return {
-                "symbol":            symbol,
-                "range":             effective_range,
+                "symbol": symbol,
+                "range": effective_range,
                 "summary": (
                     f"{symbol} closing price on {resolved_date} "
                     f"was ${date_row.adj_close:.2f} [source: DB • {resolved_date}]."
                 ),
-                "citations":         [{"type": "db", "date": str(resolved_date)}],
+                "citations": [{"type": "db", "date": str(resolved_date)}],
                 "validation_passed": True,
-                "is_stale":          is_stale,
-                "data_age_hours":    round(data_age_hours, 2),
+                "is_stale": is_stale,
+                "data_age_hours": round(data_age_hours, 2),
                 "stats": {
-                    "start_price":       stats.start_price,
-                    "end_price":         stats.end_price,
+                    "start_price": stats.start_price,
+                    "end_price": stats.end_price,
                     "period_return_pct": stats.period_return_pct,
-                    "high_price":        stats.high_price,
-                    "low_price":         stats.low_price,
-                    "volatality_pct":    stats.volatility_pct,
-                    "trading_days":      stats.trading_days,
+                    "high_price": stats.high_price,
+                    "low_price": stats.low_price,
+                    "volatality_pct": stats.volatility_pct,
+                    "trading_days": stats.trading_days,
                 },
             }
         else:
             if str(resolved_date) < str(stats.start_date):
-                reason = (
-                    f"outside our available history "
-                    f"(earliest data: {stats.start_date})"
-                )
+                reason = f"outside our available history (earliest data: {stats.start_date})"
             else:
                 reason = "likely a market holiday or weekend"
             return {
-                "symbol":            symbol,
-                "range":             effective_range,
-                "summary":           f"No trading data for {symbol} on {resolved_date} — {reason}.",
-                "citations":         [],
+                "symbol": symbol,
+                "range": effective_range,
+                "summary": f"No trading data for {symbol} on {resolved_date} — {reason}.",
+                "citations": [],
                 "validation_passed": True,
-                "is_stale":          is_stale,
-                "data_age_hours":    round(data_age_hours, 2),
-                "stats":             {},
+                "is_stale": is_stale,
+                "data_age_hours": round(data_age_hours, 2),
+                "stats": {},
             }
 
     # news fetch — also run get_sentiment for news/sentiment questions
@@ -214,6 +208,7 @@ async def _analyse_one_symbol(
     with _lf_span("validate", input={"news_focus": news_focus}):
         if news_focus:
             from investorai_mcp.llm.validator import ValidationResult
+
             validation = ValidationResult(passed=True, response=raw_response)
         else:
             validation = validate_response(raw_response, stats)
@@ -221,37 +216,39 @@ async def _analyse_one_symbol(
     citation_result = extract_citations(validation.response)
 
     return {
-        "symbol":            symbol,
-        "range":             effective_range,
-        "summary":           citation_result.clean_text,
+        "symbol": symbol,
+        "range": effective_range,
+        "summary": citation_result.clean_text,
         "citations": [
-            {"type": c.citation_type, "date": c.date}
-            for c in citation_result.db_citations
-        ] + [
+            {"type": c.citation_type, "date": c.date} for c in citation_result.db_citations
+        ]
+        + [
             {"type": c.citation_type, "publisher": c.publisher, "url": c.url}
             for c in citation_result.news_citations
         ],
         "validation_passed": validation.passed,
-        "is_stale":          is_stale,
-        "data_age_hours":    round(data_age_hours, 2),
+        "is_stale": is_stale,
+        "data_age_hours": round(data_age_hours, 2),
         "sentiment": {
-            "overall":    sentiment_result["sentiment"],
-            "score":      sentiment_result["score"],
-            "reasoning":  sentiment_result["reasoning"],
+            "overall": sentiment_result["sentiment"],
+            "score": sentiment_result["score"],
+            "reasoning": sentiment_result["reasoning"],
             "key_themes": sentiment_result.get("key_themes", []),
-        } if news_focus and sentiment_result and not sentiment_result.get("error") else None,
+        }
+        if news_focus and sentiment_result and not sentiment_result.get("error")
+        else None,
         "stats": {
-            "start_price":       stats.start_price,
-            "end_price":         stats.end_price,
+            "start_price": stats.start_price,
+            "end_price": stats.end_price,
             "period_return_pct": stats.period_return_pct,
-            "high_price":        stats.high_price,
-            "low_price":         stats.low_price,
-            "volatality_pct":    stats.volatility_pct,
-            "trading_days":      stats.trading_days,
+            "high_price": stats.high_price,
+            "low_price": stats.low_price,
+            "volatality_pct": stats.volatility_pct,
+            "trading_days": stats.trading_days,
         },
         "_timings": {
-            "db_fetch_ms":   _db_fetch_ms,
-            "llm_ms":        _llm_ms,
+            "db_fetch_ms": _db_fetch_ms,
+            "llm_ms": _llm_ms,
             "validation_ms": _validation_ms,
         },
     }
@@ -314,23 +311,23 @@ async def get_trend_summary(
     for sym in symbols:
         if not is_supported(sym):
             return {
-                "error":   True,
-                "code":    "TICKER_NOT_SUPPORTED",
+                "error": True,
+                "code": "TICKER_NOT_SUPPORTED",
                 "message": f"{sym} is not in the InvestorAI supported universe.",
-                "hint":    "Use search_ticker to find supported stocks.",
+                "hint": "Use search_ticker to find supported stocks.",
             }
 
     # Resolve date context:
     #   1. 'last N days/weeks/months/years' → concrete (start, today) window
     #   2. explicit range 'May 2023 to May 2025'
     #   3. single date (relative weekday or absolute calendar date)
-    date_range    = detect_duration(question) or resolve_date_range(question)
+    date_range = detect_duration(question) or resolve_date_range(question)
     if date_range is not None:
         _dr_start, _dr_end = date_range
         if _dr_start > _dr_end:
             return {
-                "error":   True,
-                "code":    "INVALID_DATE_RANGE",
+                "error": True,
+                "code": "INVALID_DATE_RANGE",
                 "message": f"Resolved date range is invalid: start ({_dr_start}) is after end ({_dr_end}).",
             }
     resolved_date = (
@@ -345,7 +342,7 @@ async def get_trend_summary(
     elif resolved_date is not None:
         effective_range = range_for_date(resolved_date)
     else:
-        detected_range  = detect_range(question)
+        detected_range = detect_range(question)
         effective_range = detected_range if detected_range else range
 
     # Build the question string to pass to the LLM (only used for non-date paths)
@@ -366,9 +363,7 @@ async def get_trend_summary(
     # This prevents "approximately N days" guesses based on trading-day counts.
     if date_range is not None:
         dr_start, dr_end = date_range
-        date_str = (
-            f"{dr_start.strftime('%B %d, %Y')} to {dr_end.strftime('%B %d, %Y')}"
-        )
+        date_str = f"{dr_start.strftime('%B %d, %Y')} to {dr_end.strftime('%B %d, %Y')}"
         final_question = (
             f"{final_question}\n"
             f"IMPORTANT: The analysis covers exactly {date_str}. "
@@ -422,17 +417,24 @@ async def get_trend_summary(
     ):
         compressed_history = None
         if history:
-            with _lf_span("compress_history",
-                                 input={"history_len": len(history)}):
+            with _lf_span("compress_history", input={"history_len": len(history)}):
                 compressed_history = await compress_history(
-                    history, session_hash=session_hash, api_key=api_key,
+                    history,
+                    session_hash=session_hash,
+                    api_key=api_key,
                 )
 
         # Single stock — return flat dict (backwards-compatible)
         if len(symbols) == 1:
             return await _analyse_one_symbol(
-                symbols[0], effective_range, final_question, session_hash,
-                compressed_history, resolved_date, date_range, news_focus,
+                symbols[0],
+                effective_range,
+                final_question,
+                session_hash,
+                compressed_history,
+                resolved_date,
+                date_range,
+                news_focus,
                 api_key=api_key,
             )
 
@@ -444,21 +446,19 @@ async def get_trend_summary(
         # Fast path: specific date — look up each symbol's closing price directly,
         # no LLM needed (same as single-stock fast path).
         if resolved_date is not None:
-            parts    = []
-            stale    = False
+            parts = []
+            stale = False
             for sym, cr, _news, _info, _sent in fetched:
                 if not cr.data:
                     parts.append(f"{sym}: no data available.")
                     continue
                 stats = compute_stats(sym, effective_range, cr.data)
-                row   = next((r for r in cr.data if r.date == resolved_date), None)
+                row = next((r for r in cr.data if r.date == resolved_date), None)
                 if row:
-                    parts.append(
-                        f"{sym}: ${row.adj_close:.2f} [source: DB • {resolved_date}]"
-                    )
+                    parts.append(f"{sym}: ${row.adj_close:.2f} [source: DB • {resolved_date}]")
                 else:
                     earliest = str(stats.start_date) if stats else "unknown"
-                    reason   = (
+                    reason = (
                         f"outside available history (earliest: {earliest})"
                         if stats and str(resolved_date) < str(stats.start_date)
                         else "market holiday or weekend"
@@ -468,19 +468,19 @@ async def get_trend_summary(
                     stale = True
             summary = f"Closing prices on {resolved_date}:\n" + "\n".join(parts)
             return {
-                "multi":             True,
-                "symbols":           symbols,
-                "range":             effective_range,
-                "summary":           summary,
-                "citations":         [{"type": "db", "date": str(resolved_date)}],
+                "multi": True,
+                "symbols": symbols,
+                "range": effective_range,
+                "summary": summary,
+                "citations": [{"type": "db", "date": str(resolved_date)}],
                 "validation_passed": True,
-                "is_stale":          stale,
+                "is_stale": stale,
             }
 
-        use_cot   = date_range is not None
+        use_cot = date_range is not None
         all_stats = []
-        all_news  = []
-        is_stale  = False
+        all_news = []
+        is_stale = False
         _mktcap_map: dict[str, float] = {}
         _sentiment_map: dict[str, dict] = {}
         for sym, cr, news, si, sent in fetched:
@@ -505,19 +505,21 @@ async def get_trend_summary(
 
         if not all_stats:
             return {
-                "error":   True,
-                "code":    "DATA_UNAVAILABLE",
+                "error": True,
+                "code": "DATA_UNAVAILABLE",
                 "message": f"Data for {', '.join(symbols)} is being fetched. Please try again in a few seconds.",
-                "retry":   True,
+                "retry": True,
             }
 
         # Build one combined data block and a single LLM prompt.
         # For large comparisons (>10 symbols) use a compact one-liner per stock
         # so 50 stocks don't blow the context window.
         from investorai_mcp.llm.prompt_builder import COT_SYSTEM_PROMPT, SYSTEM_PROMPT
+
         _name_map = {sym: info["name"] for sym, info in SUPPORTED_TICKERS.items()}
         _sector_map = {sym: info["sector"] for sym, info in SUPPORTED_TICKERS.items()}
         if len(all_stats) > 10:
+
             def _compact_line(st) -> str:
                 mkt = _mktcap_map.get(st.ticker_symbol)
                 mkt_str = f" | ${mkt / 1e9:.0f}B" if mkt else ""
@@ -530,6 +532,7 @@ async def get_trend_summary(
                     f"high ${st.high_price:.2f}, low ${st.low_price:.2f}, "
                     f"vol {st.volatility_pct:.1f}%"
                 )
+
             combined_data = "\n".join(_compact_line(st) for st in all_stats)
         else:
             combined_data = "\n\n".join(st.to_text() for st in all_stats)
@@ -539,19 +542,22 @@ async def get_trend_summary(
         _MAX_DATA_CHARS = 100_000
         if len(combined_data) > _MAX_DATA_CHARS:
             import logging as _logging
+
             _logging.getLogger(__name__).warning(
                 "Data block truncated before LLM: %d chars -> %d (%d stocks)",
-                len(combined_data), _MAX_DATA_CHARS, len(all_stats),
+                len(combined_data),
+                _MAX_DATA_CHARS,
+                len(all_stats),
             )
-            combined_data = combined_data[:_MAX_DATA_CHARS] + "\n[Data truncated — reduce stock count for full detail]"
+            combined_data = (
+                combined_data[:_MAX_DATA_CHARS]
+                + "\n[Data truncated — reduce stock count for full detail]"
+            )
 
         # Suppress news for large comparisons — it adds noise without helping rank stocks
         news_block = ""
         if all_news and len(all_stats) <= 10:
-            headlines = [
-                f"- {a.headline} ({a.source} • {a.url})"
-                for a in all_news[:15]
-            ]
+            headlines = [f"- {a.headline} ({a.source} • {a.url})" for a in all_news[:15]]
             news_block = "\nRECENT NEWS:\n" + "\n".join(headlines) + "\n"
             # Append pre-computed sentiment per symbol so the LLM sees it explicitly
             if news_focus and _sentiment_map:
@@ -579,8 +585,7 @@ async def get_trend_summary(
         elif all_stats:
             # Use actual data dates from the first stock as a reference
             period_header = (
-                f"ANALYSIS PERIOD: {all_stats[0].start_date} "
-                f"to {all_stats[0].end_date}\n\n"
+                f"ANALYSIS PERIOD: {all_stats[0].start_date} to {all_stats[0].end_date}\n\n"
             )
 
         if news_focus and news_block:
@@ -592,9 +597,7 @@ async def get_trend_summary(
                 f"Only reference price data if directly relevant to the question."
             )
         else:
-            user_content = (
-                f"DATA_PROVIDED:\n{period_header}{combined_data}{news_block}\n\nUser question:\n{final_question}"
-            )
+            user_content = f"DATA_PROVIDED:\n{period_header}{combined_data}{news_block}\n\nUser question:\n{final_question}"
         messages.append({"role": "user", "content": user_content})
 
         _t_llm_multi = _time.perf_counter_ns()
@@ -612,6 +615,7 @@ async def get_trend_summary(
         _t_val_multi = _time.perf_counter_ns()
         with _lf_span("validate", input={"news_focus": news_focus}):
             from investorai_mcp.llm.validator import ValidationResult
+
             if news_focus or len(all_stats) > 5:
                 validation = ValidationResult(passed=True, response=raw_response)
             else:
@@ -620,31 +624,33 @@ async def get_trend_summary(
         citation_result = extract_citations(validation.response)
 
         return {
-            "multi":             True,
-            "symbols":           symbols,
-            "range":             effective_range,
-            "summary":           citation_result.clean_text,
+            "multi": True,
+            "symbols": symbols,
+            "range": effective_range,
+            "summary": citation_result.clean_text,
             "citations": [
-                {"type": c.citation_type, "date": c.date}
-                for c in citation_result.db_citations
-            ] + [
+                {"type": c.citation_type, "date": c.date} for c in citation_result.db_citations
+            ]
+            + [
                 {"type": c.citation_type, "publisher": c.publisher, "url": c.url}
                 for c in citation_result.news_citations
             ],
             "validation_passed": validation.passed,
-            "is_stale":          is_stale,
+            "is_stale": is_stale,
             "sentiments": {
                 sym: {
-                    "overall":    s["sentiment"],
-                    "score":      s["score"],
-                    "reasoning":  s["reasoning"],
+                    "overall": s["sentiment"],
+                    "score": s["score"],
+                    "reasoning": s["reasoning"],
                     "key_themes": s.get("key_themes", []),
                 }
                 for sym, s in _sentiment_map.items()
-            } if news_focus and _sentiment_map else None,
+            }
+            if news_focus and _sentiment_map
+            else None,
             "_timings": {
-                "db_fetch_ms":   _db_fetch_ms_multi,
-                "llm_ms":        _llm_ms_multi,
+                "db_fetch_ms": _db_fetch_ms_multi,
+                "llm_ms": _llm_ms_multi,
                 "validation_ms": _validation_ms_multi,
             },
         }

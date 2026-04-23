@@ -11,6 +11,7 @@ can be imported and unit-tested directly.  The MCP tool wrapper
 result available to any MCP client that wants to inspect question
 understanding before fetching data.
 """
+
 import re
 from datetime import UTC, date, datetime
 
@@ -21,23 +22,50 @@ from investorai_mcp.stocks import SUPPORTED_TICKERS
 
 SECTOR_KEYWORDS: dict[str, list[str]] = {
     "Energy & Industrials": [
-        "energy", "oil", "gas", "industrial", "aerospace", "defense",
-        "utilities", "solar", "renewable", "refinery",
+        "energy",
+        "oil",
+        "gas",
+        "industrial",
+        "aerospace",
+        "defense",
+        "utilities",
+        "solar",
+        "renewable",
+        "refinery",
     ],
     "Technology": [
-        "tech", "technology", "software", "semiconductor", "chip",
-        "cloud", "ai sector", "internet sector",
+        "tech",
+        "technology",
+        "software",
+        "semiconductor",
+        "chip",
+        "cloud",
+        "ai sector",
+        "internet sector",
     ],
     "Finance": [
-        "financ", "bank", "banking", "insurance", "investment",
-        "fintech", "payment sector", "wall street",
+        "financ",
+        "bank",
+        "banking",
+        "insurance",
+        "investment",
+        "fintech",
+        "payment sector",
+        "wall street",
     ],
     "Healthcare": [
-        "health", "healthcare", "pharma", "pharmaceutical", "biotech",
-        "medical", "drug sector",
+        "health",
+        "healthcare",
+        "pharma",
+        "pharmaceutical",
+        "biotech",
+        "medical",
+        "drug sector",
     ],
     "Consumer": [
-        "consumer", "retail sector", "restaurant sector",
+        "consumer",
+        "retail sector",
+        "restaurant sector",
         "e-commerce sector",
     ],
 }
@@ -45,69 +73,180 @@ SECTOR_KEYWORDS: dict[str, list[str]] = {
 # ── All-stocks phrase list ────────────────────────────────────────────────
 
 ALL_STOCKS_PHRASES = [
-    "all 50", "all fifty", "all stocks", "all tickers", "all supported",
-    "all the stocks", "all of them", "across all", "universe of",
-    "entire universe", "full universe", "whole universe",
-    "compare all", "compare stocks", "compare the stocks",
-    "rank stocks", "rank the stocks", "ranking stocks",
-    "best performing stock", "worst performing stock",
-    "best performing", "worst performing",
-    "top performing", "bottom performing",
-    "best stock", "worst stock",
-    "top stock", "top stocks",
-    "every stock", "every ticker",
+    "all 50",
+    "all fifty",
+    "all stocks",
+    "all tickers",
+    "all supported",
+    "all the stocks",
+    "all of them",
+    "across all",
+    "universe of",
+    "entire universe",
+    "full universe",
+    "whole universe",
+    "compare all",
+    "compare stocks",
+    "compare the stocks",
+    "rank stocks",
+    "rank the stocks",
+    "ranking stocks",
+    "best performing stock",
+    "worst performing stock",
+    "best performing",
+    "worst performing",
+    "top performing",
+    "bottom performing",
+    "best stock",
+    "worst stock",
+    "top stock",
+    "top stocks",
+    "every stock",
+    "every ticker",
 ]
 
 # ── News keyword list ─────────────────────────────────────────────────────
 
 NEWS_KEYWORDS = [
-    "news", "headline", "article", "latest", "recent news",
-    "what's happening", "what is happening", "announcement",
-    "update", "say", "saying", "report",
+    "news",
+    "headline",
+    "article",
+    "latest",
+    "recent news",
+    "what's happening",
+    "what is happening",
+    "announcement",
+    "update",
+    "say",
+    "saying",
+    "report",
 ]
 
 
 # ── Pure sync helpers (importable and unit-testable) ─────────────────────
 
+
 def detect_range(question: str) -> str | None:
     """Detect a time range shortcode from natural language.  Returns None if no range is detected."""
     q = question.lower()
-    if any(w in q for w in [
-        "5 year", "5year", "5-year", "5 years", "five year", "five years",
-        "five-year", "5yr", "5 yr", "past 5", "last 5 year",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "5 year",
+            "5year",
+            "5-year",
+            "5 years",
+            "five year",
+            "five years",
+            "five-year",
+            "5yr",
+            "5 yr",
+            "past 5",
+            "last 5 year",
+        ]
+    ):
         return "5Y"
-    if any(w in q for w in [
-        "3 year", "3year", "3-year", "3 years", "three year", "three years",
-        "three-year", "3yr", "3 yr", "past 3", "last 3 year",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "3 year",
+            "3year",
+            "3-year",
+            "3 years",
+            "three year",
+            "three years",
+            "three-year",
+            "3yr",
+            "3 yr",
+            "past 3",
+            "last 3 year",
+        ]
+    ):
         return "3Y"
-    if any(w in q for w in [
-        "1 year", "1year", "1-year", "1 years", "one year", "one-year",
-        "this year", "past year", "last year", "12 month",
-        "1yr", "1 yr", "last yr", "past yr", "this yr",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "1 year",
+            "1year",
+            "1-year",
+            "1 years",
+            "one year",
+            "one-year",
+            "this year",
+            "past year",
+            "last year",
+            "12 month",
+            "1yr",
+            "1 yr",
+            "last yr",
+            "past yr",
+            "this yr",
+        ]
+    ):
         return "1Y"
-    if any(w in q for w in [
-        "6 month", "6month", "6-month", "six month", "six months",
-        "half year", "half-year", "last 6",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "6 month",
+            "6month",
+            "6-month",
+            "six month",
+            "six months",
+            "half year",
+            "half-year",
+            "last 6",
+        ]
+    ):
         return "6M"
-    if any(w in q for w in [
-        "3 month", "3month", "3-month", "three month", "three months",
-        "three-month", "quarter", "last 3 month", "last 3 months",
-        "past 3 month", "past quarter", "last 3m", "in 3m", "past 3m",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "3 month",
+            "3month",
+            "3-month",
+            "three month",
+            "three months",
+            "three-month",
+            "quarter",
+            "last 3 month",
+            "last 3 months",
+            "past 3 month",
+            "past quarter",
+            "last 3m",
+            "in 3m",
+            "past 3m",
+        ]
+    ):
         return "3M"
-    if any(w in q for w in [
-        "1 month", "1month", "1-month", "one month", "one-month",
-        "30 day", "4 week", "5 week", "last month", "past month",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "1 month",
+            "1month",
+            "1-month",
+            "one month",
+            "one-month",
+            "30 day",
+            "4 week",
+            "5 week",
+            "last month",
+            "past month",
+        ]
+    ):
         return "1M"
-    if any(w in q for w in [
-        "1 week", "1week", "1-week", "one week", "one-week",
-        "7 day", "this week", "last week",
-    ]):
+    if any(
+        w in q
+        for w in [
+            "1 week",
+            "1week",
+            "1-week",
+            "one week",
+            "one-week",
+            "7 day",
+            "this week",
+            "last week",
+        ]
+    ):
         return "1W"
     return None
 
@@ -135,7 +274,7 @@ def detect_symbols(question: str) -> list[str]:
         if symbol in found:
             continue
         raw_first = info["name"].lower().split()[0]
-        m = re.match(r'[a-z]+', raw_first)
+        m = re.match(r"[a-z]+", raw_first)
         first_word = m.group() if m else raw_first
         if len(first_word) > 3 and first_word in q_lower:
             found.append(symbol)
@@ -183,34 +322,45 @@ def resolve_relative_date(question: str) -> date | None:
     from datetime import timedelta as _td
 
     _WEEKDAYS = {
-        "monday": 0, "mon": 0,
-        "tuesday": 1, "tue": 1, "tues": 1,
-        "wednesday": 2, "wed": 2,
-        "thursday": 3, "thu": 3, "thur": 3, "thurs": 3,
-        "friday": 4, "fri": 4,
-        "saturday": 5, "sat": 5,
-        "sunday": 6, "sun": 6,
+        "monday": 0,
+        "mon": 0,
+        "tuesday": 1,
+        "tue": 1,
+        "tues": 1,
+        "wednesday": 2,
+        "wed": 2,
+        "thursday": 3,
+        "thu": 3,
+        "thur": 3,
+        "thurs": 3,
+        "friday": 4,
+        "fri": 4,
+        "saturday": 5,
+        "sat": 5,
+        "sunday": 6,
+        "sun": 6,
     }
     q = question.lower()
     today = datetime.now(UTC).date()
 
-    if re.search(r'\btoday\b', q):
+    if re.search(r"\btoday\b", q):
         return today
-    if re.search(r'\byesterday\b', q):
+    if re.search(r"\byesterday\b", q):
         return today - _td(days=1)
 
     m_ago = re.search(
-        r'\b(a|an|\d+(?:\.\d+)?)\s+(day|week|month|year)s?\s+ago\b', q,
+        r"\b(a|an|\d+(?:\.\d+)?)\s+(day|week|month|year)s?\s+ago\b",
+        q,
     )
     if m_ago:
         amount = 1.0 if m_ago.group(1) in ("a", "an") else float(m_ago.group(1))
-        unit   = m_ago.group(2)
-        days   = {"day": 1, "week": 7, "month": 30.44, "year": 365.25}[unit]
+        unit = m_ago.group(2)
+        days = {"day": 1, "week": 7, "month": 30.44, "year": 365.25}[unit]
         return today - _td(days=int(round(amount * days)))
 
     match = re.search(
-        r'\b(?:last|this)\s+(monday|mon|tuesday|tue|tues|wednesday|wed'
-        r'|thursday|thu|thur|thurs|friday|fri|saturday|sat|sunday|sun)\b',
+        r"\b(?:last|this)\s+(monday|mon|tuesday|tue|tues|wednesday|wed"
+        r"|thursday|thu|thur|thurs|friday|fri|saturday|sat|sunday|sun)\b",
         q,
     )
     if not match:
@@ -231,17 +381,27 @@ def resolve_absolute_date(question: str) -> date | None:
     Returns None if no parseable date is found.
     """
     _MONTHS = {
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
     }
     month_pat = (
-        r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?'
-        r'|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?'
-        r'|dec(?:ember)?)'
+        r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?"
+        r"|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?"
+        r"|dec(?:ember)?)"
     )
     q = question.lower()
 
-    m = re.search(rf'\b({month_pat})\s+(\d{{1,2}})[,\s]+(\d{{4}})\b', q)
+    m = re.search(rf"\b({month_pat})\s+(\d{{1,2}})[,\s]+(\d{{4}})\b", q)
     if m:
         try:
             mon = _MONTHS[m.group(1)[:3]]
@@ -249,7 +409,7 @@ def resolve_absolute_date(question: str) -> date | None:
         except ValueError:
             pass
 
-    m = re.search(rf'\b(\d{{1,2}})\s+({month_pat})\s+(\d{{4}})\b', q)
+    m = re.search(rf"\b(\d{{1,2}})\s+({month_pat})\s+(\d{{4}})\b", q)
     if m:
         try:
             mon = _MONTHS[m.group(2)[:3]]
@@ -257,7 +417,7 @@ def resolve_absolute_date(question: str) -> date | None:
         except ValueError:
             pass
 
-    m = re.search(r'\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b', q)
+    m = re.search(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b", q)
     if m:
         try:
             return date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
@@ -282,13 +442,14 @@ def detect_duration(question: str) -> tuple[date, date] | None:
     q = question.lower()
 
     m = re.search(
-        r'\b(?:last|past)\s+(\d+(?:\.\d+)?)\s*(day|week|month|year)s?\b', q,
+        r"\b(?:last|past)\s+(\d+(?:\.\d+)?)\s*(day|week|month|year)s?\b",
+        q,
     )
     if not m:
         return None
 
     amount = float(m.group(1))
-    unit   = m.group(2)
+    unit = m.group(2)
     delta_map = {"day": 1, "week": 7, "month": 30.44, "year": 365.25}
     if unit not in delta_map:
         return None
@@ -311,15 +472,25 @@ def resolve_date_range(question: str) -> tuple[date, date] | None:
     import calendar as _cal
 
     _MONTHS = {
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
     }
     _month_pat = (
-        r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?'
-        r'|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?'
-        r'|dec(?:ember)?)'
+        r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?"
+        r"|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?"
+        r"|dec(?:ember)?)"
     )
-    _sep = r'\s*(?:to|-{1,2}|through|and)\s*'
+    _sep = r"\s*(?:to|-{1,2}|through|and)\s*"
     q = question.lower()
 
     def _mstart(mon_str: str, yr: int) -> date:
@@ -331,12 +502,13 @@ def resolve_date_range(question: str) -> tuple[date, date] | None:
 
     # "Month YYYY to Month YYYY"
     m = re.search(
-        rf'({_month_pat})\s+(\d{{4}})\s*{_sep}({_month_pat})\s+(\d{{4}})', q,
+        rf"({_month_pat})\s+(\d{{4}})\s*{_sep}({_month_pat})\s+(\d{{4}})",
+        q,
     )
     if m:
         try:
             start = _mstart(m.group(1), int(m.group(2)))
-            end   = _mend(m.group(3), int(m.group(4)))
+            end = _mend(m.group(3), int(m.group(4)))
             if start < end:
                 return start, end
         except ValueError:
@@ -344,15 +516,15 @@ def resolve_date_range(question: str) -> tuple[date, date] | None:
 
     # "YYYY-MM-DD to YYYY-MM-DD"
     m = re.search(
-        r'\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})'
-        r'\s*(?:to|-)\s*'
-        r'(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b',
+        r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})"
+        r"\s*(?:to|-)\s*"
+        r"(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b",
         q,
     )
     if m:
         try:
             start = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-            end   = date(int(m.group(4)), int(m.group(5)), int(m.group(6)))
+            end = date(int(m.group(4)), int(m.group(5)), int(m.group(6)))
             if start < end:
                 return start, end
         except ValueError:
@@ -360,15 +532,15 @@ def resolve_date_range(question: str) -> tuple[date, date] | None:
 
     # "Month DD YYYY to Month DD YYYY"
     m = re.search(
-        rf'({_month_pat})\s+(\d{{1,2}})[,\s]+(\d{{4}})'
-        rf'\s*{_sep}'
-        rf'({_month_pat})\s+(\d{{1,2}})[,\s]+(\d{{4}})',
+        rf"({_month_pat})\s+(\d{{1,2}})[,\s]+(\d{{4}})"
+        rf"\s*{_sep}"
+        rf"({_month_pat})\s+(\d{{1,2}})[,\s]+(\d{{4}})",
         q,
     )
     if m:
         try:
             start = date(int(m.group(3)), _MONTHS[m.group(1)[:3]], int(m.group(2)))
-            end   = date(int(m.group(6)), _MONTHS[m.group(4)[:3]], int(m.group(5)))
+            end = date(int(m.group(6)), _MONTHS[m.group(4)[:3]], int(m.group(5)))
             if start < end:
                 return start, end
         except ValueError:
@@ -381,21 +553,27 @@ def range_for_date(target: date) -> str:
     """Return the smallest supported range shortcode that covers the target date."""
     today = datetime.now(UTC).date()
     delta = (today - target).days
-    if delta <= 7:       return "1W"
-    if delta <= 31:      return "1M"
-    if delta <= 92:      return "3M"
-    if delta <= 183:     return "6M"
-    if delta <= 365:     return "1Y"
-    if delta <= 365 * 3: return "3Y"
+    if delta <= 7:
+        return "1W"
+    if delta <= 31:
+        return "1M"
+    if delta <= 92:
+        return "3M"
+    if delta <= 183:
+        return "6M"
+    if delta <= 365:
+        return "1Y"
+    if delta <= 365 * 3:
+        return "3Y"
     return "5Y"
 
 
 def extract_date_context(question: str) -> str | None:
     """Return a human-readable date context string from embedded year/month references."""
     dates = re.findall(
-        r'\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2}|'
-        r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+20\d{2}|'
-        r'20\d{2})\b',
+        r"\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2}|"
+        r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+20\d{2}|"
+        r"20\d{2})\b",
         question.lower(),
     )
     if len(dates) >= 2:
@@ -406,6 +584,7 @@ def extract_date_context(question: str) -> str | None:
 
 
 # ── MCP tool wrapper ──────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def parse_question(question: str) -> dict:
@@ -445,7 +624,7 @@ async def parse_question(question: str) -> dict:
                 sector_label = " & ".join(matched_sectors)
 
     # Date resolution: duration range → explicit range → single date
-    dur_range  = detect_duration(question)
+    dur_range = detect_duration(question)
     expl_range = resolve_date_range(question) if dur_range is None else None
     date_range = dur_range or expl_range
     resolved_date: date | None = None
@@ -461,13 +640,13 @@ async def parse_question(question: str) -> dict:
         effective_range = detect_range(question)
 
     return {
-        "symbols":       detected_symbols,
-        "sector_label":  sector_label,
+        "symbols": detected_symbols,
+        "sector_label": sector_label,
         "is_all_stocks": is_all_stocks,
-        "range":         effective_range,
+        "range": effective_range,
         "resolved_date": str(resolved_date) if resolved_date else None,
-        "date_range":    [str(date_range[0]), str(date_range[1])] if date_range else None,
-        "is_news":       is_news_question(question),
-        "date_context":  extract_date_context(question),
-        "today":         str(today),
+        "date_range": [str(date_range[0]), str(date_range[1])] if date_range else None,
+        "is_news": is_news_question(question),
+        "date_context": extract_date_context(question),
+        "today": str(today),
     }

@@ -2,9 +2,9 @@
 Chat history compressor for MCP
 
 
-Keeps last 5 messages verbatim. 
-Summarizes older messages into single compressed context block. 
-Reduces token usage by 60-80% on long conversations. 
+Keeps last 5 messages verbatim.
+Summarizes older messages into single compressed context block.
+Reduces token usage by 60-80% on long conversations.
 
 
 If the summarization LLM cal fails (no API key/ rate limited/ network error), the
@@ -13,6 +13,7 @@ still get answered, just without compression.
 
 This trade off - never sacrifice correctness for cost optiomization.
 """
+
 import asyncio
 import logging
 
@@ -20,16 +21,16 @@ from investorai_mcp.llm.litellm_client import call_llm
 
 logger = logging.getLogger(__name__)
 
-# how many recent messages to keep vervatim. 
+# how many recent messages to keep vervatim.
 EXPLICIT_WINDOW = 5
 
-#system prompt for the summarizaiton call
+# system prompt for the summarizaiton call
 _SUMMARY_PROMPT = (
     "You are summarising conversation between the user and stock research assistant. "
     "Create a bried summary (2-4 sentences) what preserves: "
     "Which stocks were discussed, what data was requested, "
     "And any important context or preferences the user expressed. "
-    "Be concise - this summary replaces the full history to save tokens"   
+    "Be concise - this summary replaces the full history to save tokens"
 )
 
 
@@ -39,38 +40,39 @@ async def compress_history(
     api_key: str | None = None,
 ) -> list[dict]:
     """
-    Compress chat history to reduce token usage. 
-    
-    Keeps the last EXPLICIT_WINDOW messages verbatim. 
-    Summarises all other messages into one system message. 
-    
+    Compress chat history to reduce token usage.
+
+    Keeps the last EXPLICIT_WINDOW messages verbatim.
+    Summarises all other messages into one system message.
+
     Args:
-        messages: Full conversation history as a list of 
+        messages: Full conversation history as a list of
         {"role": "..."}, "content": "..."} dicts.
-        session_hash: For LLM usage tracking. 
-        
+        session_hash: For LLM usage tracking.
+
     Returns:
-        Compressed message list - same format but with fewer tokens. 
+        Compressed message list - same format but with fewer tokens.
     """
-    #short enough - no need to compress
-    if len(messages) <= EXPLICIT_WINDOW: # +1 for system prompt
+    # short enough - no need to compress
+    if len(messages) <= EXPLICIT_WINDOW:  # +1 for system prompt
         return messages
-    
+
     older = messages[:-EXPLICIT_WINDOW]
     recent = messages[-EXPLICIT_WINDOW:]
-    
-    #build a readable version of older message for sumarisation
+
+    # build a readable version of older message for sumarisation
     older_text = "\n".join(
-        f"{m['role'].upper()}: {m['content']}"
-        for m in older
-        if m['role'] in ("user", "assistant") 
+        f"{m['role'].upper()}: {m['content']}" for m in older if m["role"] in ("user", "assistant")
     )
     try:
         summary = await asyncio.wait_for(
             call_llm(
                 messages=[
                     {"role": "system", "content": _SUMMARY_PROMPT},
-                    {"role": "user", "content": f"Summarise the following conversation history: \n\n{older_text}"},
+                    {
+                        "role": "user",
+                        "content": f"Summarise the following conversation history: \n\n{older_text}",
+                    },
                 ],
                 session_hash=session_hash,
                 tool_name="history_compressor",
@@ -79,33 +81,30 @@ async def compress_history(
             ),
             timeout=15,
         )
-        
+
         compressed = [
-            {
-                "role": "system",
-                "content": f"[Earlier conversaiton summary]: {summary}"
-            },
+            {"role": "system", "content": f"[Earlier conversaiton summary]: {summary}"},
             *recent,
         ]
-        
+
         logger.debug(
             "Compressed history from %d messages -> %d messages",
             len(messages),
             len(compressed),
         )
         return compressed
-    
+
     except Exception as e:
         # if compression fails, return full history - never break the main flow
         logger.error("History compression failed, using full history: %s", str(e))
         return messages
-    
+
+
 def count_tokens_approx(messages: list[dict]) -> int:
     """
     Approximate token count for a list of messages. - 1 token ≈ 4 characters.
-    Used for logging and monitoring not for hard limits. 
+    Used for logging and monitoring not for hard limits.
     """
     # very rough approximation: 1 token ~ 4 chars in English
     total_chars = sum(len(m.get("content", "")) for m in messages)
     return total_chars // 4
-

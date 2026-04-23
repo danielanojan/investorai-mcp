@@ -105,9 +105,7 @@ class NewsArticle(Base):
 
     __table_args__ = (
         Index("idx_news_symbol_published", "symbol", "published_at"),
-        CheckConstraint(
-            "sentiment_score BETWEEN -1 AND 1", name="ck_news_sentiment_range"
-        ),
+        CheckConstraint("sentiment_score BETWEEN -1 AND 1", name="ck_news_sentiment_range"),
     )
 
 
@@ -146,9 +144,7 @@ class EvalLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     query_id: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    symbol: Mapped[str | None] = mapped_column(
-        String, ForeignKey("tickers.symbol"), nullable=True
-    )
+    symbol: Mapped[str | None] = mapped_column(String, ForeignKey("tickers.symbol"), nullable=True)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     ai_answer: Mapped[str] = mapped_column(Text, nullable=False)
     ground_truth: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -157,32 +153,25 @@ class EvalLog(Base):
     violation_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String, nullable=True)
     source: Mapped[str] = mapped_column(String, nullable=False, default="live")
-    ts: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     ticker: Mapped["Ticker | None"] = relationship(back_populates="eval_entries")
 
     __table_args__ = (
         Index("idx_eval_query_id", "query_id"),
         Index("idx_eval_ts", "ts"),
-        CheckConstraint(
-            "pass_fail IN ('PASS', 'FAIL', 'SKIP')", name="ck_eval_pass_fail_valid"
-        ),
-        CheckConstraint(
-            "source IN ('live', 'eval_suite')", name="ck_eval_source_valid"
-        ),
+        CheckConstraint("pass_fail IN ('PASS', 'FAIL', 'SKIP')", name="ck_eval_pass_fail_valid"),
+        CheckConstraint("source IN ('live', 'eval_suite')", name="ck_eval_source_valid"),
     )
 
 
 class ChatRequestLog(Base):
     """One row per /chat/stream call — tracks end-to-end server latency."""
+
     __tablename__ = "chat_request_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    ts: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
     question: Mapped[str] = mapped_column(Text, nullable=False)
     symbols: Mapped[str] = mapped_column(String, nullable=False)
     range: Mapped[str] = mapped_column(String(4), nullable=False)
@@ -196,9 +185,7 @@ class ChatRequestLog(Base):
     __table_args__ = (
         Index("idx_chat_req_ts", "ts"),
         Index("idx_chat_req_latency", "total_latency_ms"),
-        CheckConstraint(
-            "status IN ('success', 'error')", name="ck_chat_req_status"
-        ),
+        CheckConstraint("status IN ('success', 'error')", name="ck_chat_req_status"),
     )
 
 
@@ -214,9 +201,7 @@ class LLMUsageLog(Base):
     tokens_out: Mapped[int] = mapped_column(Integer, nullable=False)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False)
-    ts: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=func.now()
-    )
+    ts: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
     __table_args__ = (
         Index("idx_llm_session", "session_hash"),

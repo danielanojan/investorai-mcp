@@ -1,7 +1,7 @@
 import client from './client'
 
 import type {
-    Ticker, PriceHistory, DailySummary, 
+    Ticker, PriceHistory, DailySummary,
     NewsArticle, TrendSummary, TimeRange
 } from '../types'
 
@@ -32,7 +32,7 @@ export const getDailySummary = async (
 }
 
 export const getNews = async (
-    symbol: string, 
+    symbol: string,
     limit = 10
 ) : Promise<NewsArticle[]> => {
     const res = await client.get(`/stocks/${symbol}/news?limit=${limit}`)

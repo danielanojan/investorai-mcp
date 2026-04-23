@@ -7,6 +7,20 @@ on:
     branches: [dev, main]
 
 jobs:
+  secrets:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so gitleaks scans all commits
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true   # warn until baseline is confirmed clean
+
   test:
     name: Lint · Type-check · Test
     runs-on: ubuntu-latest
@@ -37,6 +51,11 @@ jobs:
       - name: Security scan (bandit)
         run: uv run bandit -r investorai_mcp/ -ll -q
         continue-on-error: true   # informational until baseline is clean
+
+      # ── Dependency CVE audit ─────────────────────────────────────────────
+      - name: Dependency audit (pip-audit)
+        run: uv run pip-audit
+        continue-on-error: true   # warn until known CVEs are triaged
 
       # ── Unit tests + coverage gate ───────────────────────────────────────
       - name: Unit tests

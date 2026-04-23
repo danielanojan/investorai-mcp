@@ -1,3 +1,4 @@
+import logging
 from typing import Literal
 
 from fastmcp import Context
@@ -10,7 +11,10 @@ from investorai_mcp.llm.litellm_client import lf_span
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import is_supported
 
+logger = logging.getLogger(__name__)
+
 _adapter: YFinanceAdapter | None = None
+
 
 def _get_adapter() -> YFinanceAdapter:
     global _adapter
@@ -19,13 +23,13 @@ def _get_adapter() -> YFinanceAdapter:
     return _adapter
 
 
-def _format_price(row: PriceHistory, price_type:str) -> dict:
+def _format_price(row: PriceHistory, price_type: str) -> dict:
     price = {
         "adj_close": row.adj_close,
         "close": row.close,
-        "avg_price": row.avg_price,   
+        "avg_price": row.avg_price,
     }.get(price_type, row.adj_close)
-    
+
     return {
         "date": row.date.isoformat(),
         "price": round(price, 4),
@@ -34,67 +38,72 @@ def _format_price(row: PriceHistory, price_type:str) -> dict:
         "avg_price": round(row.avg_price, 4),
         "volume": row.volume,
     }
-    
-    
+
+
 @mcp.tool()
 async def get_price_history(
     ticker_symbol: str,
     range: Literal["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"] = "1Y",
     price_type: Literal["adj_close", "close", "avg_price"] = "adj_close",
     limit: int = 0,
-    ctx : Context | None = None,
+    ctx: Context | None = None,
 ) -> dict:
     """
-    Return daily price history for a supported stock ticker. 
-    
+    Return daily price history for a supported stock ticker.
+
     Fetches OHLCV data from local database cache. If data is stale
-    a background refresh is triggered automatically. You still get the data 
-    immediately, but it may be outdated. 
-    
+    a background refresh is triggered automatically. You still get the data
+    immediately, but it may be outdated.
+
     Use adj_close(default) for all price comparisons and trend analysis. Close price is the raw closing price and may be distorted by corporate actions.
     It is adjusted for stock splits and dividends and is the most accurate
     representaiotn of the investor returns
-    
-    Only call this for the tickers in the 50 stock MVP universe. 
-    Do not call for crypt, ETFs, options or international stocks. 
-    Use search_ticker first if unsure whether a ticker is supported. 
-    
+
+    Only call this for the tickers in the 50 stock MVP universe.
+    Do not call for crypt, ETFs, options or international stocks.
+    Use search_ticker first if unsure whether a ticker is supported.
+
     Args:
         ticker symbol: Uppercase ticker symbol (e.g. AAPL, MSFT, GOOGL)
         Range: Date range - 1W, 1M, 3M, 6M, 1Y, 3Y, 5Y - defualt is 1Y
         price_type : adj_close(default), avg_price, or close
-        
+
     Returns:
         dict with prices list, staleness info and summary stats.
     """
-    
+
     symbol = ticker_symbol.strip().upper()
-    
+
     if not is_supported(symbol):
         return {
             "error": True,
             "message": f"Ticker '{symbol}' is not supported.",
             "code": "TICKER_NOT_SUPPORTED",
-            "hint" : " Use search_ticker tool to find supported tickers."
-            
+            "hint": " Use search_ticker tool to find supported tickers.",
         }
+
+    adapter = _get_adapter()
 
     with lf_span("get_price_history", input={"symbol": symbol, "range": range}):
         async with AsyncSessionLocal() as session:
-            manager = CacheManager(session, _get_adapter())
-
-            #ensure ticker row exists in DB
+            manager = CacheManager(session, adapter)
             await manager.ensure_ticker_exists(symbol)
+            needs = await manager.get_stale_or_missing([symbol], "price_history")
 
-            # Fetch from cache (triggers background refresh if stale)
+        if needs:
+            await CacheManager.refresh_prices_standalone(symbol, adapter)
+
+        async with AsyncSessionLocal() as session:
+            manager = CacheManager(session, adapter)
             result = await manager.get_prices(symbol, range)
 
         if not result.data:
             return {
-                "error": True,
-                "code": "DATA_UNAVAILABLE",
-                "message": f"No price data available for {symbol}",
-                "hint": "Try again in few seconds - a background fetch is in progress."
+                "symbol": symbol,
+                "range": range,
+                "prices": [],
+                "total_days": 0,
+                "note": "No price data available for this symbol.",
             }
 
         all_prices = [_format_price(row, price_type) for row in result.data]
@@ -105,13 +114,12 @@ async def get_price_history(
         else:
             prices = all_prices
 
-        #compute summary statistics
+        # compute summary statistics
         price_values = [p["price"] for p in prices]
         start_price = price_values[0] if price_values else 0
         end_price = price_values[-1] if price_values else 0
         period_return_pct = (
-            round((end_price - start_price) / start_price * 100, 2)
-            if start_price > 0 else 0
+            round((end_price - start_price) / start_price * 100, 2) if start_price > 0 else 0
         )
 
         return {

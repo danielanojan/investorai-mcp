@@ -8,12 +8,14 @@ The core logic lives in the synchronous helper `handle_meta_question` so it
 can be imported and unit-tested without async overhead.  The MCP tool wrapper
 is async to match the FastMCP interface.
 """
+
 from datetime import UTC, datetime
 
 from investorai_mcp.server import mcp
 from investorai_mcp.stocks import SUPPORTED_TICKERS
 
 # ── Pure sync helper (importable and unit-testable) ───────────────────────
+
 
 def handle_meta_question(question: str) -> dict | None:
     """Answer a meta/capability question about the system.
@@ -28,17 +30,40 @@ def handle_meta_question(question: str) -> dict | None:
     today = datetime.now(UTC).date()
 
     _performance_words = [
-        "best", "worst", "top", "bottom", "perform", "return", "gain",
-        "loss", "compare", "rank", "highest", "lowest",
-        "outperform", "underperform", "grew", "fell", "rise", "drop",
+        "best",
+        "worst",
+        "top",
+        "bottom",
+        "perform",
+        "return",
+        "gain",
+        "loss",
+        "compare",
+        "rank",
+        "highest",
+        "lowest",
+        "outperform",
+        "underperform",
+        "grew",
+        "fell",
+        "rise",
+        "drop",
     ]
     _is_performance_q = any(pw in q for pw in _performance_words)
 
     # Today / current date
-    if any(kw in q for kw in [
-        "today", "current date", "what date", "what day is it",
-        "what's the date", "whats the date", "what is the date",
-    ]):
+    if any(
+        kw in q
+        for kw in [
+            "today",
+            "current date",
+            "what date",
+            "what day is it",
+            "what's the date",
+            "whats the date",
+            "what is the date",
+        ]
+    ):
         return {
             "summary": f"Today is {today.strftime('%A, %B %d, %Y')}.",
             "citations": [],
@@ -46,16 +71,23 @@ def handle_meta_question(question: str) -> dict | None:
         }
 
     # Supported sectors
-    if not _is_performance_q and any(kw in q for kw in [
-        "what sector", "which sector", "sectors do you", "sectors support",
-        "sector available", "sectors available", "sectors covered",
-    ]):
+    if not _is_performance_q and any(
+        kw in q
+        for kw in [
+            "what sector",
+            "which sector",
+            "sectors do you",
+            "sectors support",
+            "sector available",
+            "sectors available",
+            "sectors covered",
+        ]
+    ):
         sectors: dict[str, list[str]] = {}
         for sym, info in SUPPORTED_TICKERS.items():
             sectors.setdefault(info["sector"], []).append(sym)
         lines = [
-            f"**{sec}** ({len(syms)} stocks): {', '.join(syms)}"
-            for sec, syms in sectors.items()
+            f"**{sec}** ({len(syms)} stocks): {', '.join(syms)}" for sec, syms in sectors.items()
         ]
         summary = (
             f"I cover **{len(sectors)} sectors** with **{len(SUPPORTED_TICKERS)} stocks** total:\n\n"
@@ -65,18 +97,24 @@ def handle_meta_question(question: str) -> dict | None:
         return {"summary": summary, "citations": [], "validation_passed": True}
 
     # Supported stocks / tickers
-    if not _is_performance_q and any(kw in q for kw in [
-        "what stock", "which stock", "stocks do you", "tickers",
-        "what do you cover", "what do you support", "what can you",
-        "supported stock", "available stock",
-    ]):
+    if not _is_performance_q and any(
+        kw in q
+        for kw in [
+            "what stock",
+            "which stock",
+            "stocks do you",
+            "tickers",
+            "what do you cover",
+            "what do you support",
+            "what can you",
+            "supported stock",
+            "available stock",
+        ]
+    ):
         sectors2: dict[str, list[str]] = {}
         for sym, info in SUPPORTED_TICKERS.items():
             sectors2.setdefault(info["sector"], []).append(sym)
-        lines2 = [
-            f"**{sec}**: {', '.join(syms)}"
-            for sec, syms in sectors2.items()
-        ]
+        lines2 = [f"**{sec}**: {', '.join(syms)}" for sec, syms in sectors2.items()]
         summary = (
             f"I have data for **{len(SUPPORTED_TICKERS)} stocks** across "
             f"**{len(sectors2)} sectors**:\n\n"
@@ -87,10 +125,19 @@ def handle_meta_question(question: str) -> dict | None:
         return {"summary": summary, "citations": [], "validation_passed": True}
 
     # Data range / timeline
-    if any(kw in q for kw in [
-        "how far back", "time range", "how much data", "data range",
-        "how long", "oldest data", "earliest data", "data available",
-    ]):
+    if any(
+        kw in q
+        for kw in [
+            "how far back",
+            "time range",
+            "how much data",
+            "data range",
+            "how long",
+            "oldest data",
+            "earliest data",
+            "data available",
+        ]
+    ):
         return {
             "summary": (
                 f"I have daily price history going back up to **5 years** for all 50 supported stocks. "
@@ -106,6 +153,7 @@ def handle_meta_question(question: str) -> dict | None:
 
 
 # ── MCP tool wrapper ──────────────────────────────────────────────────────
+
 
 @mcp.tool()
 async def get_system_info(question: str) -> dict:

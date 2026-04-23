@@ -9,21 +9,23 @@ Module-level names in agent.py patch at:
   _dispatch        → investorai_mcp.llm.agent._dispatch
   _TOKEN_HARD_LIMIT / _TOKEN_WARN_LIMIT → investorai_mcp.llm.agent.*
 """
+
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Patch paths
 # ---------------------------------------------------------------------------
-_LLM_RAW   = "investorai_mcp.llm.litellm_client._call_llm_raw"
-_COMPRESS  = "investorai_mcp.llm.history.compress_history"
+_LLM_RAW = "investorai_mcp.llm.litellm_client._call_llm_raw"
+_COMPRESS = "investorai_mcp.llm.history.compress_history"
 _COUNT_TOK = "investorai_mcp.llm.history.count_tokens_approx"
-_DISPATCH  = "investorai_mcp.llm.agent._dispatch"
+_DISPATCH = "investorai_mcp.llm.agent._dispatch"
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_response(content: str = "", tool_calls=None):
     """Build a minimal LiteLLM-style response object."""
@@ -62,13 +64,16 @@ async def _collect(gen):
 # Final answer (no tool calls)
 # ---------------------------------------------------------------------------
 
+
 async def test_final_answer_yields_tokens_and_done():
     from investorai_mcp.llm.agent import run_agent_loop
 
     response = _make_response("Hello world")
-    with patch(_LLM_RAW, new=AsyncMock(return_value=response)), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000):
+    with (
+        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+    ):
         events = await _collect(run_agent_loop("hi"))
 
     types = [e["type"] for e in events]
@@ -83,9 +88,11 @@ async def test_empty_content_yields_done():
     from investorai_mcp.llm.agent import run_agent_loop
 
     response = _make_response("")
-    with patch(_LLM_RAW, new=AsyncMock(return_value=response)), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000):
+    with (
+        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+    ):
         events = await _collect(run_agent_loop("hi"))
 
     assert events[-1]["type"] == "done"
@@ -95,12 +102,13 @@ async def test_empty_content_yields_done():
 # Tool-call path
 # ---------------------------------------------------------------------------
 
+
 async def test_tool_call_yields_thinking_then_done():
     from investorai_mcp.llm.agent import run_agent_loop
 
     tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL", "range": "1Y"})
-    first_response  = _make_response(tool_calls=[tc])
-    final_response  = _make_response("AAPL is up.")
+    first_response = _make_response(tool_calls=[tc])
+    final_response = _make_response("AAPL is up.")
 
     call_count = 0
 
@@ -111,10 +119,12 @@ async def test_tool_call_yields_thinking_then_done():
 
     tool_result = {"symbol": "AAPL", "prices": [], "is_stale": False}
 
-    with patch(_LLM_RAW, new=fake_llm), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000), \
-         patch(_DISPATCH, new=AsyncMock(return_value=tool_result)):
+    with (
+        patch(_LLM_RAW, new=fake_llm),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=AsyncMock(return_value=tool_result)),
+    ):
         events = await _collect(run_agent_loop("What is AAPL?"))
 
     thinking_events = [e for e in events if e["type"] == "thinking"]
@@ -137,10 +147,12 @@ async def test_thinking_event_contains_iteration_number():
         call_count += 1
         return first_response if call_count == 1 else final_response
 
-    with patch(_LLM_RAW, new=fake_llm), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000), \
-         patch(_DISPATCH, new=AsyncMock(return_value={"symbol": "AAPL"})):
+    with (
+        patch(_LLM_RAW, new=fake_llm),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=AsyncMock(return_value={"symbol": "AAPL"})),
+    ):
         events = await _collect(run_agent_loop("find apple"))
 
     thinking = [e for e in events if e["type"] == "thinking"]
@@ -151,16 +163,19 @@ async def test_thinking_event_contains_iteration_number():
 # Max iterations
 # ---------------------------------------------------------------------------
 
+
 async def test_max_iterations_yields_error_token():
     from investorai_mcp.llm.agent import run_agent_loop
 
     tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL"})
     always_tool_response = _make_response(tool_calls=[tc])
 
-    with patch(_LLM_RAW, new=AsyncMock(return_value=always_tool_response)), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000), \
-         patch(_DISPATCH, new=AsyncMock(return_value={})):
+    with (
+        patch(_LLM_RAW, new=AsyncMock(return_value=always_tool_response)),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=AsyncMock(return_value={})),
+    ):
         events = await _collect(run_agent_loop("loop forever", max_iterations=3))
 
     assert events[-1]["type"] == "done"
@@ -172,13 +187,16 @@ async def test_max_iterations_yields_error_token():
 # Token budget
 # ---------------------------------------------------------------------------
 
+
 async def test_token_hard_limit_aborts_loop():
     from investorai_mcp.llm.agent import _TOKEN_HARD_LIMIT, run_agent_loop
 
     mock_llm = AsyncMock()
-    with patch(_LLM_RAW, new=mock_llm), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=_TOKEN_HARD_LIMIT + 1):
+    with (
+        patch(_LLM_RAW, new=mock_llm),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=_TOKEN_HARD_LIMIT + 1),
+    ):
         events = await _collect(run_agent_loop("big query"))
 
     mock_llm.assert_not_called()
@@ -191,9 +209,11 @@ async def test_token_warn_limit_continues():
     from investorai_mcp.llm.agent import _TOKEN_WARN_LIMIT, run_agent_loop
 
     response = _make_response("Answer.")
-    with patch(_LLM_RAW, new=AsyncMock(return_value=response)), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=_TOKEN_WARN_LIMIT + 1):
+    with (
+        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=_TOKEN_WARN_LIMIT + 1),
+    ):
         events = await _collect(run_agent_loop("medium query"))
 
     assert events[-1]["type"] == "done"
@@ -203,6 +223,7 @@ async def test_token_warn_limit_continues():
 # ---------------------------------------------------------------------------
 # _execute_tool_call
 # ---------------------------------------------------------------------------
+
 
 async def test_execute_tool_call_bad_json_returns_error():
     from investorai_mcp.llm.agent import _execute_tool_call
@@ -280,6 +301,7 @@ async def test_execute_tool_call_success_returns_result():
 # History compression
 # ---------------------------------------------------------------------------
 
+
 async def test_history_is_compressed_before_loop():
     from investorai_mcp.llm.agent import run_agent_loop
 
@@ -287,9 +309,11 @@ async def test_history_is_compressed_before_loop():
     compressed = [{"role": "user", "content": "summary"}, {"role": "assistant", "content": "ok"}]
     mock_compress = AsyncMock(return_value=compressed)
 
-    with patch(_LLM_RAW, new=AsyncMock(return_value=response)), \
-         patch(_COMPRESS, new=mock_compress), \
-         patch(_COUNT_TOK, return_value=1000):
+    with (
+        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_COMPRESS, new=mock_compress),
+        patch(_COUNT_TOK, return_value=1000),
+    ):
         await _collect(run_agent_loop("question", history=[{"role": "user", "content": "old msg"}]))
 
     mock_compress.assert_called_once()
@@ -301,9 +325,11 @@ async def test_no_history_skips_compression():
     response = _make_response("Fine.")
     mock_compress = AsyncMock(return_value=[])
 
-    with patch(_LLM_RAW, new=AsyncMock(return_value=response)), \
-         patch(_COMPRESS, new=mock_compress), \
-         patch(_COUNT_TOK, return_value=1000):
+    with (
+        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_COMPRESS, new=mock_compress),
+        patch(_COUNT_TOK, return_value=1000),
+    ):
         await _collect(run_agent_loop("question", history=None))
 
     mock_compress.assert_not_called()
@@ -312,6 +338,7 @@ async def test_no_history_skips_compression():
 # ---------------------------------------------------------------------------
 # Concurrent tool dispatch
 # ---------------------------------------------------------------------------
+
 
 async def test_multiple_tool_calls_dispatched_concurrently():
     from investorai_mcp.llm.agent import run_agent_loop
@@ -334,10 +361,12 @@ async def test_multiple_tool_calls_dispatched_concurrently():
         dispatch_calls.append(tool_name)
         return {"prices": []}
 
-    with patch(_LLM_RAW, new=fake_llm), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000), \
-         patch(_DISPATCH, new=fake_dispatch):
+    with (
+        patch(_LLM_RAW, new=fake_llm),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=fake_dispatch),
+    ):
         events = await _collect(run_agent_loop("Compare AAPL and MSFT"))
 
     assert len(dispatch_calls) == 2
@@ -350,12 +379,14 @@ async def test_multiple_tool_calls_dispatched_concurrently():
 # _emit_side_events
 # ---------------------------------------------------------------------------
 
+
 async def _drain(gen):
     return [e async for e in gen]
 
 
 async def test_emit_side_events_empty_no_events():
     from investorai_mcp.llm.agent import _emit_side_events
+
     events = await _drain(_emit_side_events([]))
     assert events == []
 
@@ -364,6 +395,7 @@ async def test_emit_side_events_error_result_ignored():
     import json
 
     from investorai_mcp.llm.agent import _emit_side_events
+
     error_result = json.dumps({"error": True, "code": "NO_NEWS"})
     events = await _drain(_emit_side_events([("get_sentiment", error_result)]))
     assert events == []
@@ -373,15 +405,18 @@ async def test_emit_side_events_sentiment_single_stock():
     import json
 
     from investorai_mcp.llm.agent import _emit_side_events
-    sentiment_result = json.dumps({
-        "symbol": "AAPL",
-        "sentiment": "positive",
-        "score": 1,
-        "reasoning": "Good earnings.",
-        "key_themes": ["earnings", "growth"],
-        "citations": [{"type": "news", "publisher": "Reuters", "url": "http://r.com/1"}],
-        "articles_analyzed": 1,
-    })
+
+    sentiment_result = json.dumps(
+        {
+            "symbol": "AAPL",
+            "sentiment": "positive",
+            "score": 1,
+            "reasoning": "Good earnings.",
+            "key_themes": ["earnings", "growth"],
+            "citations": [{"type": "news", "publisher": "Reuters", "url": "http://r.com/1"}],
+            "articles_analyzed": 1,
+        }
+    )
     events = await _drain(_emit_side_events([("get_sentiment", sentiment_result)]))
     types = {e["type"] for e in events}
     assert "citations" in types
@@ -396,10 +431,17 @@ async def test_emit_side_events_sentiment_maps_key_correctly():
     import json
 
     from investorai_mcp.llm.agent import _emit_side_events
-    result = json.dumps({
-        "symbol": "TSLA", "sentiment": "negative", "score": -1,
-        "reasoning": "Bad news.", "key_themes": [], "citations": [],
-    })
+
+    result = json.dumps(
+        {
+            "symbol": "TSLA",
+            "sentiment": "negative",
+            "score": -1,
+            "reasoning": "Bad news.",
+            "key_themes": [],
+            "citations": [],
+        }
+    )
     events = await _drain(_emit_side_events([("get_sentiment", result)]))
     s = next(e for e in events if e["type"] == "sentiment")
     assert s["sentiment"]["overall"] == "negative"
@@ -412,10 +454,19 @@ async def test_emit_side_events_multiple_stocks_yields_sentiments():
     from investorai_mcp.llm.agent import _emit_side_events
 
     def _make(symbol, overall):
-        return ("get_sentiment", json.dumps({
-            "symbol": symbol, "sentiment": overall, "score": 1,
-            "reasoning": "ok", "key_themes": [], "citations": [],
-        }))
+        return (
+            "get_sentiment",
+            json.dumps(
+                {
+                    "symbol": symbol,
+                    "sentiment": overall,
+                    "score": 1,
+                    "reasoning": "ok",
+                    "key_themes": [],
+                    "citations": [],
+                }
+            ),
+        )
 
     events = await _drain(_emit_side_events([_make("AAPL", "positive"), _make("MSFT", "neutral")]))
     types = {e["type"] for e in events}
@@ -430,14 +481,20 @@ async def test_emit_side_events_citations_collected():
     import json
 
     from investorai_mcp.llm.agent import _emit_side_events
-    result = json.dumps({
-        "symbol": "AAPL", "sentiment": "positive", "score": 1,
-        "reasoning": "ok", "key_themes": [],
-        "citations": [
-            {"type": "news", "publisher": "Reuters", "url": "http://r.com/1"},
-            {"type": "news", "publisher": "Bloomberg", "url": "http://b.com/2"},
-        ],
-    })
+
+    result = json.dumps(
+        {
+            "symbol": "AAPL",
+            "sentiment": "positive",
+            "score": 1,
+            "reasoning": "ok",
+            "key_themes": [],
+            "citations": [
+                {"type": "news", "publisher": "Reuters", "url": "http://r.com/1"},
+                {"type": "news", "publisher": "Bloomberg", "url": "http://b.com/2"},
+            ],
+        }
+    )
     events = await _drain(_emit_side_events([("get_sentiment", result)]))
     citations_event = next(e for e in events if e["type"] == "citations")
     assert len(citations_event["citations"]) == 2
@@ -447,6 +504,7 @@ async def test_emit_side_events_non_sentiment_tool_ignored():
     import json
 
     from investorai_mcp.llm.agent import _emit_side_events
+
     price_result = json.dumps({"symbol": "AAPL", "prices": [], "is_stale": False})
     events = await _drain(_emit_side_events([("get_price_history", price_result)]))
     assert events == []
@@ -455,6 +513,7 @@ async def test_emit_side_events_non_sentiment_tool_ignored():
 # ---------------------------------------------------------------------------
 # run_agent_loop emits citations/sentiment before done
 # ---------------------------------------------------------------------------
+
 
 async def test_loop_emits_sentiment_event_after_get_sentiment():
     from investorai_mcp.llm.agent import run_agent_loop
@@ -471,16 +530,21 @@ async def test_loop_emits_sentiment_event_after_get_sentiment():
         return first_response if call_count == 1 else final_response
 
     sentiment_result = {
-        "symbol": "AAPL", "sentiment": "positive", "score": 1,
-        "reasoning": "Good earnings.", "key_themes": ["earnings"],
+        "symbol": "AAPL",
+        "sentiment": "positive",
+        "score": 1,
+        "reasoning": "Good earnings.",
+        "key_themes": ["earnings"],
         "citations": [{"type": "news", "publisher": "Reuters", "url": "http://r.com"}],
         "articles_analyzed": 1,
     }
 
-    with patch(_LLM_RAW, new=fake_llm), \
-         patch(_COMPRESS, new=AsyncMock(return_value=[])), \
-         patch(_COUNT_TOK, return_value=1000), \
-         patch(_DISPATCH, new=AsyncMock(return_value=sentiment_result)):
+    with (
+        patch(_LLM_RAW, new=fake_llm),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=AsyncMock(return_value=sentiment_result)),
+    ):
         events = await _collect(run_agent_loop("What is AAPL sentiment?"))
 
     types = [e["type"] for e in events]

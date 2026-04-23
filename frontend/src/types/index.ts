@@ -6,7 +6,7 @@ export interface Ticker {
 }
 
 export interface PricePoint {
-    date: string, 
+    date: string,
     price: number
     adj_close: number
     avg_price: number
@@ -60,7 +60,7 @@ export interface NewsArticle {
 export interface TrendSummary {
     symbol: string
     range: string
-    summary: string, 
+    summary: string,
     citations: Citation[]
     validation_passed: boolean
     stats : {
@@ -75,4 +75,3 @@ export interface TrendSummary {
 }
 
 export type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | '3Y' | '5Y'
-
