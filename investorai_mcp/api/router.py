@@ -378,6 +378,7 @@ async def chat_stream(request: Request):
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
             import hashlib
+
             from investorai_mcp.llm.agent import run_agent_loop
 
             _key_token = (api_key or "anonymous")[:16]

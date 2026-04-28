@@ -47,6 +47,7 @@ def create_async_engine_with_fk(*args, **kwargs):
         return engine
 
     try:
+
         @event.listens_for(engine.sync_engine.pool, "connect")
         def set_sqlite_pragma(dbapi_conn, connection_record):
             try:

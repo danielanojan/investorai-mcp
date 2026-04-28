@@ -9,7 +9,7 @@ from sqlalchemy.engine import Connection
 
 from investorai_mcp.db.models import Base
 
-#alembic runs this everytime when migration command is executed. 
+# alembic runs this everytime when migration command is executed.
 
 
 # Load .env so DATABASE_URL is available when running alembic from CLI
@@ -19,11 +19,9 @@ config = context.config
 
 database_url = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./investorai.db")
 
-# Alembic uses synchronous engines — strip async driver prefixes and replace with sync equivalents. 
-sync_url = (
-    database_url
-    .replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-    .replace("sqlite+aiosqlite://", "sqlite://")
+# Alembic uses synchronous engines — strip async driver prefixes and replace with sync equivalents.
+sync_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://").replace(
+    "sqlite+aiosqlite://", "sqlite://"
 )
 
 config.set_main_option("sqlalchemy.url", sync_url)
@@ -31,13 +29,14 @@ config.set_main_option("sqlalchemy.url", sync_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# schema is stored in Base.metadata - 
+# schema is stored in Base.metadata -
 # we will use it for autogeneration of migration scripts.
 target_metadata = Base.metadata
 
-#this runs migrations without actual DB connections. 
-# this generates SQL to stdout ot a file. 
-# this is used for review. 
+
+# this runs migrations without actual DB connections.
+# this generates SQL to stdout ot a file.
+# this is used for review.
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -50,9 +49,10 @@ def run_migrations_offline() -> None:
     with context.begin_transaction():
         context.run_migrations()
 
-# this creates a syncronous engine visa engine_from_confic. 
-#usual path to run migrations. It connects and run migrations in reallive DB. 
-# NullPool is used - so connections aren't pooled - each migration will get fresh connection and releases immediately. 
+
+# this creates a syncronous engine visa engine_from_confic.
+# usual path to run migrations. It connects and run migrations in reallive DB.
+# NullPool is used - so connections aren't pooled - each migration will get fresh connection and releases immediately.
 def do_run_migrations(connection: Connection) -> None:
     if "sqlite" in sync_url:
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
@@ -77,7 +77,8 @@ def run_migrations_online() -> None:
         do_run_migrations(connection)
     connectable.dispose()
 
-#entry point - select online/ offline and run accordingly. 
+
+# entry point - select online/ offline and run accordingly.
 # Alembic will call this when you run alembic command in CLI.
 if context.is_offline_mode():
     run_migrations_offline()

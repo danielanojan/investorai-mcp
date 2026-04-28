@@ -100,11 +100,13 @@ class CacheManager:
         if not lock.locked():
             task = asyncio.create_task(self._locked_refresh_prices(symbol, meta, lock))
             task.add_done_callback(
-                lambda t: logger.error(
-                    "Background price refresh failed for %s: %s", symbol, t.exception()
+                lambda t: (
+                    logger.error(
+                        "Background price refresh failed for %s: %s", symbol, t.exception()
+                    )
+                    if t.exception()
+                    else None
                 )
-                if t.exception()
-                else None
             )
         return CacheResult(
             data=rows, is_stale=True, data_age_hours=age_hours, provider_used=meta.provider_used
@@ -282,7 +284,9 @@ class CacheManager:
                             headline=r.headline,
                             source=r.source,
                             url=r.url,
-                            published_at=r.published_at.replace(tzinfo=None) if r.published_at.tzinfo else r.published_at,
+                            published_at=r.published_at.replace(tzinfo=None)
+                            if r.published_at.tzinfo
+                            else r.published_at,
                             fetched_at=now,
                         )
                     )
