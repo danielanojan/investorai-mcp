@@ -43,6 +43,7 @@ dev = [
     "pip-audit>=2.7",
     "pre-commit>=3.7",
     "respx>=0.21",
+    "pylint>=4.0.5",
 ]
 
 [tool.hatch.build]
@@ -90,3 +91,36 @@ target-version = ["py311"]
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
+
+[tool.pylint.messages_control]
+disable = [
+    "C0114",  # missing-module-docstring — not our convention
+    "C0115",  # missing-class-docstring — not our convention
+    "C0116",  # missing-function-docstring — not our convention
+    "C0301",  # line-too-long — ruff enforces 100 char limit
+    "C0303",  # trailing-whitespace — ruff handles
+    "C0413",  # wrong-import-position — intentional lazy imports
+    "C0415",  # import-outside-toplevel — intentional circular-import avoidance
+    "W0105",  # pointless-string-statement — module-level section headers
+    "W0212",  # protected-access — tools intentionally call CacheManager internal helpers
+    "W0603",  # global-statement — intentional lazy adapter init pattern across tools
+    "W0611",  # unused-import — tool registration imports are intentional (noqa: F401)
+    "W0613",  # unused-argument — FastAPI/FastMCP signatures require matching args
+    "W0622",  # redefined-builtin 'range' — domain terminology, suppressed in ruff too
+    "W0718",  # broad-exception-caught — intentional in background task handlers
+    "R0801",  # duplicate-code — similar tool bootstrap patterns are intentional
+    "R0401",  # cyclic-import — known, resolved via lazy imports (which triggers C0415)
+    "R0902",  # too-many-instance-attributes — prompt_builder has 15, no hard cap needed
+    "R0911",  # too-many-return-statements — parse_question has complex branching
+    "R0913",  # too-many-arguments — LLM/builder functions need many params
+    "R0903",  # too-few-public-methods — SQLAlchemy model classes are data containers
+    "R0914",  # too-many-locals — no hard limit in this codebase
+    "R0912",  # too-many-branches — LLM/agent response parsing has complex branching
+    "R0915",  # too-many-statements — router endpoints have complex but correct logic
+    "R0917",  # too-many-positional-arguments — same as R0913
+    "E1102",  # not-callable — false positive for SQLAlchemy func.count() / func.now()
+    "C0103",  # invalid-name — AsyncSessionLocal uses PascalCase (SQLAlchemy convention)
+]
+
+[tool.pylint.format]
+max-line-length = 100

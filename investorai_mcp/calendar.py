@@ -130,8 +130,6 @@ class USMarketCalendar:
 
         # Adjust date if ET is a different calendar day than UTC
         if dt.hour < 5:
-            from datetime import timedelta
-
             et_date = et_date - timedelta(days=1)
 
         if not self.is_trading_day(et_date):

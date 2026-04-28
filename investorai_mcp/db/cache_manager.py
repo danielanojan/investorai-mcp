@@ -259,8 +259,6 @@ class CacheManager:
     @classmethod
     async def refresh_news_standalone(cls, symbol: str, adapter: "DataProviderAdapter") -> None:
         """Refresh one symbol's news in its own session. Safe for asyncio.gather calls."""
-        from datetime import UTC, datetime
-
         from sqlalchemy import delete
 
         from investorai_mcp.db import AsyncSessionLocal

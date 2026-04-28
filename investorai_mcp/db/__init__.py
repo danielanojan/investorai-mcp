@@ -69,7 +69,6 @@ AsyncSessionLocal = async_sessionmaker(
 # it does not support async.
 def _run_alembic_upgrade() -> None:
     """Run alembic migrations syncronously (called from async context via executor)"""
-    import os
     from pathlib import Path
 
     from sqlalchemy.exc import OperationalError

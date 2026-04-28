@@ -107,7 +107,7 @@ async def get_price_history(
             }
 
         all_prices = [_format_price(row, price_type) for row in result.data]
-        if limit > 0 and len(all_prices) > limit:
+        if 0 < limit < len(all_prices):
             # Evenly sample across the full range to preserve trend shape
             step = len(all_prices) / limit
             prices = [all_prices[int(i * step)] for i in range(limit)]

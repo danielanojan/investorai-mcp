@@ -589,7 +589,7 @@ async def _emit_side_events(tool_results: list[tuple[str, str]]):
         yield {"type": "citations", "citations": all_citations}
 
     if len(sentiments) == 1:
-        yield {"type": "sentiment", "sentiment": next(iter(sentiments.values()))}
+        yield {"type": "sentiment", "sentiment": list(sentiments.values())[0]}
     elif len(sentiments) > 1:
         yield {"type": "sentiments", "sentiments": sentiments}
 

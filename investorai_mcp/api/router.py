@@ -11,7 +11,7 @@ import asyncio
 import logging
 import math
 import time as _time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 logger = logging.getLogger(__name__)
@@ -76,8 +76,6 @@ def _percentile(sorted_values: list[int], p: float) -> int:
 
 @router.get("/health")
 async def health():
-    import time
-
     from sqlalchemy import text
 
     from investorai_mcp.config import settings
@@ -87,12 +85,12 @@ async def health():
 
     # DB ping — SELECT 1
     try:
-        t0 = time.monotonic()
+        t0 = _time.monotonic()
         async with AsyncSessionLocal() as session:
             await session.execute(text("SELECT 1"))
         checks["db"] = {
             "status": "ok",
-            "latency_ms": round((time.monotonic() - t0) * 1000),
+            "latency_ms": round((_time.monotonic() - t0) * 1000),
         }
     except Exception as e:
         logger.error("Health check DB ping failed: %s", e)
@@ -298,8 +296,6 @@ async def refresh_cache_endpoint(
 @router.post("/llm/validate")
 @limiter.limit("3/minute")
 async def validate_llm_key(request: Request):
-    import asyncio
-
     body = await request.json()
     api_key = body.get("api_key")
     model = body.get("model", "claude-sonnet-4-20250514")
@@ -382,8 +378,6 @@ async def chat_stream(request: Request):
             yield f"data: {json.dumps({'type': 'start', 'symbol': symbol})}\n\n"
 
             import hashlib
-            from datetime import datetime
-
             from investorai_mcp.llm.agent import run_agent_loop
 
             _key_token = (api_key or "anonymous")[:16]
@@ -487,8 +481,6 @@ async def monitoring_db(request: Request):
         ).scalar()
 
         # LLM usage today
-        from datetime import datetime, timedelta
-
         today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         llm_today = (
             await session.execute(
