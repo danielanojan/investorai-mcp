@@ -86,11 +86,6 @@ async def main(dry_run: bool, single_ticker: str | None) -> None:
     log.info("Database %s", settings.database_url)
     log.info("Dry run: %s", dry_run)
 
-    # run migrations first
-    log.info("Running Alembic migrations...")
-    await init_db()
-    log.info("Migrations complete.")
-
     engine = create_async_engine(settings.database_url, echo=False)
     Session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     adapter = YFinanceAdapter()
@@ -101,7 +96,7 @@ async def main(dry_run: bool, single_ticker: str | None) -> None:
     total_records = 0
     failed = 0
 
-    log.info("Loading %d tickers: %s", total)
+    log.info("Loading %d tickers", total)
     start = time.time()
 
     for i, symbol in enumerate(tickers, 1):

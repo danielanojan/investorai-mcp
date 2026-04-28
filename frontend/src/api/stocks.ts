@@ -2,7 +2,7 @@ import client from './client'
 
 import type {
     Ticker, PriceHistory, DailySummary,
-    NewsArticle, TrendSummary, TimeRange
+    NewsArticle, TimeRange
 } from '../types'
 
 export const searchTickers = async (q: string): Promise<Ticker[]> => {
@@ -39,27 +39,3 @@ export const getNews = async (
     return res.data.articles
 }
 
-export const getTrendSummary = async (
-    symbol: string,
-    question: string,
-    range : TimeRange = '1Y',
-) : Promise<TrendSummary> => {
-    const res = await client.post(`/stocks/${symbol}/trend`, {
-        question,
-        range
-    })
-    return res.data
-}
-
-export const chat = async (
-    symbol: string,
-    question: string,
-    history: {role: string; content: string}[] = []
-) : Promise<{answer: string}> => {
-    const res = await client.post(`/chat`, {
-        symbol,
-        question,
-        history
-    })
-    return res.data
-}

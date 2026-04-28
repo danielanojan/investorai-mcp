@@ -99,18 +99,6 @@ async def test_sentiment_unsupported_ticker(client):
 ### ----- AI Endpoints ---------------------------------------
 
 
-async def test_trend_unsupported_ticker(client):
-    response = await client.post(
-        "/api/stocks/FAKECROP/trend", json={"question": "Is the stock FakeCrop going up?"}
-    )
-    assert response.status_code == 404
-
-
-async def test_chat_missing_question(client):
-    response = await client.post("/api/chat", json={"ticker": "AAPL"})
-    assert response.status_code == 400  # Missing required field
-    assert response.json()["error"]["code"] == "MISSING_QUESTION"
-
 
 async def test_llm_validate_missing_key(client):
     response = await client.post("/api/llm/validate", json={})

@@ -6,6 +6,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # here the env is loaded and validated.
 class Settings(BaseSettings):
+    
+    # SettingsConfigDict - defines how settings should be loaded. It looks for .env file and pulls value from them. 
+    # there is no case sensitive, if theres extra fields in .env file and not defined here - ignote them 
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -14,6 +18,7 @@ class Settings(BaseSettings):
     )
 
     ############## Data provider
+    #Literal - acts as a whitelist. 
     data_provider: Literal["yfinance", "alpha_vantage", "polygon"] = "yfinance"
     alpha_vantage_key: str | None = None
     polygon_key: str | None = None
@@ -47,6 +52,8 @@ class Settings(BaseSettings):
 
     # ── Database ───────────────────────────────────────────────────────────────
     # Railway sets DATABASE_URL automatically for PostgreSQL addon
+    
+    #aliaschoices is used -to be dynamic with production env. Look for DATABASE_URL first, if thats not there - look for database_url. 
     database_url: str = Field(
         default="sqlite+aiosqlite:///./investorai.db",
         validation_alias=AliasChoices("DATABASE_URL", "database_url"),
@@ -57,4 +64,6 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
 
 
+#class instantiated - this happens at module level, but you can import settings anywhere in the app - and it will contain 
+#loaded and validated ready-to-use configuration. 
 settings = Settings()

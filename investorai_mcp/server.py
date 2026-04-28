@@ -66,7 +66,6 @@ def _register_tools():
         get_sentiment,  # noqa: F401
         get_stock_info,  # noqa: F401
         get_system_info,  # noqa: F401
-        get_trend_summary,  # noqa: F401
         parse_question,  # noqa: F401
         refresh_ticker,  # noqa: F401
         search_ticker,  # noqa: F401

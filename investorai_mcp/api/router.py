@@ -292,63 +292,6 @@ async def refresh_cache_endpoint(
 #### AI Endpoints ---------------------------------------
 
 
-@router.post("/stocks/{symbol}/trend")
-@limiter.limit("10/minute")
-async def get_trend_endpoint(
-    request: Request,
-    symbol: str,
-):
-    symbol = symbol.upper()
-    if not is_supported(symbol):
-        return JSONResponse(
-            status_code=404,
-            content=make_error(
-                "TICKER_NOT_SUPPORTED",
-                f"Ticker '{symbol}' is not in supported universe.",
-                "Use /tickers/search to find supported tickers.",
-            ),
-        )
-    from investorai_mcp.tools.get_trend_summary import get_trend_summary
-
-    body = await request.json()
-    result = await get_trend_summary(
-        symbol,
-        range=body.get("range", "1Y"),
-        question=body.get("question", "Summarise this stock's recent performance."),
-    )
-    return result
-
-
-@router.post("/chat")
-@limiter.limit("20/minute")
-async def chat_endpoint(request: Request):
-    body = await request.json()
-    symbol = body.get("ticker", "AAPL").upper()
-    question = body.get("question", "")
-    history = body.get("history", [])
-    range_ = body.get("range", "1Y")
-
-    if not question:
-        return JSONResponse(
-            status_code=400,
-            content=make_error(
-                "MISSING_QUESTION",
-                "The 'question' field is required in the request body.",
-                "Provide a question to ask about the stock.",
-            ),
-        )
-
-    from investorai_mcp.tools.get_trend_summary import get_trend_summary
-
-    result = await get_trend_summary(
-        symbol,
-        range=range_,
-        question=question,
-        history=history if history else None,
-    )
-    return result
-
-
 ### ---LLM Validation -------------------------------
 
 

@@ -13,7 +13,7 @@ def upgrade() -> None:
     op.create_table(
         "chat_request_log",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("ts", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")),
+        sa.Column("ts", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("question", sa.Text(), nullable=False),
         sa.Column("symbols", sa.String(), nullable=False),
         sa.Column("range", sa.String(4), nullable=False),

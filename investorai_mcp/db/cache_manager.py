@@ -276,7 +276,7 @@ class CacheManager:
                 if not valid:
                     return
                 await session.execute(delete(NewsArticle).where(NewsArticle.symbol == symbol))
-                now = datetime.now(UTC)
+                now = datetime.now(UTC).replace(tzinfo=None)
                 for r in valid:
                     session.add(
                         NewsArticle(
@@ -284,7 +284,7 @@ class CacheManager:
                             headline=r.headline,
                             source=r.source,
                             url=r.url,
-                            published_at=r.published_at,
+                            published_at=r.published_at.replace(tzinfo=None) if r.published_at.tzinfo else r.published_at,
                             fetched_at=now,
                         )
                     )
@@ -362,7 +362,7 @@ class CacheManager:
                 avg_price=record.avg_price,
                 volume=record.volume,
                 split_factor=record.split_factor,
-                fetched_at=datetime.now(UTC),
+                fetched_at=datetime.now(UTC).replace(tzinfo=None),
             )
             stmt = stmt.on_conflict_do_update(
                 index_elements=["symbol", "date"],
@@ -382,12 +382,12 @@ class CacheManager:
             update(CacheMetadata)
             .where(CacheMetadata.id == meta.id)
             .values(
-                last_fetched=datetime.now(UTC),
+                last_fetched=datetime.now(UTC).replace(tzinfo=None),
                 is_stale=False,
                 fetch_count=CacheMetadata.fetch_count + 1,
                 error_count=0,
                 provider_used=provider,
-                updated_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC).replace(tzinfo=None),
             )
         )
         await self._session.commit()
@@ -398,7 +398,7 @@ class CacheManager:
             .where(CacheMetadata.id == meta.id)
             .values(
                 error_count=CacheMetadata.error_count + 1,
-                updated_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC).replace(tzinfo=None),
             )
         )
         await self._session.commit()

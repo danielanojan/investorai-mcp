@@ -10,9 +10,6 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    # Enable foreign keys for SQLite
-    op.execute("PRAGMA foreign_keys=ON")
-
     # ── tickers ──────────────────────────────────────────────────────────
     op.create_table(
         "tickers",
@@ -26,7 +23,7 @@ def upgrade() -> None:
         sa.Column("is_supported", sa.Boolean(), nullable=False, server_default="1"),
         sa.Column("last_updated", sa.DateTime(), nullable=True),
         sa.Column(
-            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")
+            "created_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
         ),
         sa.PrimaryKeyConstraint("symbol"),
     )
@@ -47,7 +44,7 @@ def upgrade() -> None:
         sa.Column("volume", sa.Integer(), nullable=False),
         sa.Column("split_factor", sa.Float(), nullable=False, server_default="1.0"),
         sa.Column(
-            "fetched_at", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")
+            "fetched_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["symbol"], ["tickers.symbol"], ondelete="CASCADE"),
@@ -71,7 +68,7 @@ def upgrade() -> None:
         sa.Column("sentiment_score", sa.Integer(), nullable=True),
         sa.Column("published_at", sa.DateTime(), nullable=False),
         sa.Column(
-            "fetched_at", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")
+            "fetched_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["symbol"], ["tickers.symbol"], ondelete="CASCADE"),
@@ -95,7 +92,7 @@ def upgrade() -> None:
         sa.Column("error_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("provider_used", sa.String(), nullable=True),
         sa.Column(
-            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")
+            "updated_at", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["symbol"], ["tickers.symbol"], ondelete="CASCADE"),
@@ -121,7 +118,7 @@ def upgrade() -> None:
         sa.Column("violation_json", sa.Text(), nullable=True),
         sa.Column("reviewed_by", sa.String(), nullable=True),
         sa.Column("source", sa.String(), nullable=False, server_default="live"),
-        sa.Column("ts", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")),
+        sa.Column("ts", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["symbol"], ["tickers.symbol"]),
         sa.UniqueConstraint("query_id", name="uq_eval_query_id"),
@@ -149,7 +146,7 @@ def upgrade() -> None:
         sa.Column("tokens_out", sa.Integer(), nullable=False),
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column("status", sa.String(), nullable=False),
-        sa.Column("ts", sa.DateTime(), nullable=False, server_default=sa.text("(datetime('now'))")),
+        sa.Column("ts", sa.DateTime(), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.PrimaryKeyConstraint("id"),
         sa.CheckConstraint("tokens_in >= 0", name="ck_llm_tokens_in_non_negative"),
         sa.CheckConstraint("tokens_out >= 0", name="ck_llm_tokens_out_non_negative"),
@@ -160,10 +157,6 @@ def upgrade() -> None:
     )
     op.create_index("idx_llm_session", "llm_usage_log", ["session_hash"])
     op.create_index("idx_llm_ts", "llm_usage_log", ["ts"])
-
-    # ── SQLite pragmas ────────────────────────────────────────────────────
-    op.execute("PRAGMA journal_mode=WAL")
-    op.execute("PRAGMA foreign_keys=ON")
 
 
 def downgrade() -> None:
