@@ -99,7 +99,6 @@ async def test_sentiment_unsupported_ticker(client):
 ### ----- AI Endpoints ---------------------------------------
 
 
-
 async def test_llm_validate_missing_key(client):
     response = await client.post("/api/llm/validate", json={})
     assert response.status_code == 400  # Missing required field

@@ -245,3 +245,74 @@ async def test_update_meta_error_increments_error_count(cache_manager, seeded_ti
     result = await session.execute(stmt)
     updated = result.scalar_one()
     assert updated.error_count == 2
+
+
+# CacheResult.with_staleness_warning ──────────────────────────────────────────
+
+def test_cache_result_with_staleness_warning():
+    result = CacheResult(data=[1, 2, 3], is_stale=False, data_age_hours=1.0, provider_used="yfinance")
+    stale = result.with_staleness_warning(5.0)
+    assert stale.is_stale is True
+    assert stale.data_age_hours == 5.0
+    assert stale.data == [1, 2, 3]
+    assert stale.provider_used == "yfinance"
+
+
+# get_prices_multi ─────────────────────────────────────────────────────────────
+
+async def test_get_prices_multi_empty_returns_empty(cache_manager):
+    result = await cache_manager.get_prices_multi([])
+    assert result == {}
+
+
+async def test_get_prices_multi_returns_grouped(cache_manager, seeded_ticker, session):
+    records = [
+        make_ohlcv(symbol="AAPL", trade_date=date(2026, 3, 26), adj_close=170.0),
+        make_ohlcv(symbol="AAPL", trade_date=date(2026, 3, 27), adj_close=172.0),
+    ]
+    await cache_manager._upsert_prices("AAPL", records)
+
+    result = await cache_manager.get_prices_multi(["AAPL"], period="5Y")
+    assert "AAPL" in result
+    assert len(result["AAPL"]) == 2
+
+
+# get_stale_or_missing ────────────────────────────────────────────────────────
+
+async def test_get_stale_or_missing_empty_returns_empty(cache_manager):
+    result = await cache_manager.get_stale_or_missing([], "price_history")
+    assert result == []
+
+
+async def test_get_stale_or_missing_missing_symbol_returned(cache_manager, seeded_ticker):
+    result = await cache_manager.get_stale_or_missing(["AAPL"], "price_history")
+    assert "AAPL" in result  # no meta yet → missing
+
+
+async def test_get_stale_or_missing_fresh_not_returned(cache_manager, seeded_ticker):
+    meta = await cache_manager._get_or_create_meta("AAPL", "price_history")
+    await cache_manager._update_meta_success(meta, "yfinance")
+    result = await cache_manager.get_stale_or_missing(["AAPL"], "price_history")
+    assert "AAPL" not in result  # fresh → not stale
+
+
+# get_news_multi ──────────────────────────────────────────────────────────────
+
+async def test_get_news_multi_empty_returns_empty(cache_manager):
+    result = await cache_manager.get_news_multi([])
+    assert result == {}
+
+
+async def test_get_news_multi_no_news_returns_empty_groups(cache_manager, seeded_ticker):
+    result = await cache_manager.get_news_multi(["AAPL"])
+    assert "AAPL" not in result or result.get("AAPL", []) == []
+
+
+# period_to_cutoff all branches ───────────────────────────────────────────────
+
+def test_period_to_cutoff_all_ranges():
+    for period, expected_days in [
+        ("1W", 7), ("1M", 30), ("3M", 90), ("6M", 180), ("3Y", 365 * 3), ("5Y", 365 * 5),
+    ]:
+        cutoff = CacheManager._period_to_cutoff(period)
+        assert abs((date.today() - cutoff).days - expected_days) <= 2

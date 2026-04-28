@@ -3,7 +3,7 @@ These 50 stocks will be used for the MCP. this is the single source of truth
 Nothing outside this file should hardcode ticker symbols
 """
 
-# dict with key= string (uppercase ticker names) - values : dict with keys: name, sector, exchange 
+# dict with key= string (uppercase ticker names) - values : dict with keys: name, sector, exchange
 SUPPORTED_TICKERS: dict[str, dict[str, str]] = {
     # Technology
     "AAPL": {"name": "Apple Inc.", "sector": "Technology", "exchange": "NASDAQ"},
@@ -69,11 +69,13 @@ SUPPORTED_TICKERS: dict[str, dict[str, str]] = {
 # lookup optimization : create a set of supported symbols for O(1) lookup
 SUPPORTED_SYMBOLS: set[str] = set(SUPPORTED_TICKERS.keys())
 
+
 # checks if specific stocks is there in allowed list. - Returns bool value [True/ False]
 def is_supported(symbol: str) -> bool:
     return symbol.upper() in SUPPORTED_SYMBOLS
 
-# function will return the dict (if ticker exists) with keys: name, sector, exchange. else returns None. 
+
+# function will return the dict (if ticker exists) with keys: name, sector, exchange. else returns None.
 # get function handles missing keys gracefully by returning None if the symbol is not found in the SUPPORTED_TICKERS dictionary.
 def get_ticker_info(symbol: str) -> dict[str, str] | None:
     return SUPPORTED_TICKERS.get(symbol.upper())

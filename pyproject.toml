@@ -62,7 +62,7 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=investorai_mcp --cov-report=term-missing --cov-report=html --cov-fail-under=72"
+addopts = "--cov=investorai_mcp --cov-report=term-missing --cov-report=html --cov-fail-under=85"
 
 [tool.coverage.run]
 source = ["investorai_mcp"]
