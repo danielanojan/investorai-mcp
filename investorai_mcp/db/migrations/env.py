@@ -56,6 +56,7 @@ def run_migrations_offline() -> None:
 def do_run_migrations(connection: Connection) -> None:
     if "sqlite" in sync_url:
         connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+        connection.exec_driver_sql("PRAGMA journal_mode=WAL")
 
     context.configure(
         connection=connection,

@@ -15,10 +15,12 @@ def test_settings_load_defaults():
     assert s.rate_limit_per_min == 60
 
 
-def test_settings_database_url_default():
+def test_settings_database_url_default(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     from investorai_mcp.config import Settings
 
-    s = Settings()
+    # _env_file=None prevents reading .env so we get the hardcoded default
+    s = Settings(_env_file=None)
     assert s.database_url.startswith("sqlite+aiosqlite://")
 
 
