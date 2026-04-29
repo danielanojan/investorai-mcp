@@ -623,8 +623,12 @@ async def run_agent_loop(
     from investorai_mcp.llm.context_budget import prune_messages, trim_tool_result
     from investorai_mcp.llm.history import compress_history, count_tokens_approx
     from investorai_mcp.llm.litellm_client import _call_llm_raw
+    from investorai_mcp.llm.query_router import classify
 
-    messages: list[dict] = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
+    qc = classify(question)
+    logger.info("Query routed: type=%s symbols=%s", qc.type, qc.symbols)
+    system_content = f"{AGENT_SYSTEM_PROMPT}\n\n{qc.hint}"
+    messages: list[dict] = [{"role": "system", "content": system_content}]
     if history:
         compressed = await compress_history(history, session_hash=session_hash, api_key=api_key)
         messages.extend(compressed)
