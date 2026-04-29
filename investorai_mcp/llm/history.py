@@ -101,10 +101,16 @@ async def compress_history(
 
 
 def count_tokens_approx(messages: list[dict]) -> int:
+    """Approximate token count for a list of messages (1 token ≈ 4 chars).
+
+    Counts both content and tool_calls JSON so assistant turns with tool
+    calls are not undercounted.
     """
-    Approximate token count for a list of messages. - 1 token ≈ 4 characters.
-    Used for logging and monitoring not for hard limits.
-    """
-    # very rough approximation: 1 token ~ 4 chars in English
-    total_chars = sum(len(m.get("content", "")) for m in messages)
+    import json
+
+    total_chars = 0
+    for m in messages:
+        total_chars += len(m.get("content") or "")
+        if m.get("tool_calls"):
+            total_chars += len(json.dumps(m["tool_calls"]))
     return total_chars // 4

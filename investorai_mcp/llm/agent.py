@@ -19,10 +19,12 @@ import json
 import logging
 from typing import Any
 
-# Approximate token limits — ~4 chars per token. Hard limit aborts the loop;
-# warn limit logs but continues so small overages don't break valid queries.
-_TOKEN_HARD_LIMIT = 180_000
+# Approximate token limits — ~4 chars per token.
+# Prune limit: drop oldest tool messages to recover space.
+# Hard limit: abort only if still over budget after pruning.
+_TOKEN_HARD_LIMIT = 175_000
 _TOKEN_WARN_LIMIT = 150_000
+_TOKEN_PRUNE_LIMIT = 120_000
 
 logger = logging.getLogger(__name__)
 
@@ -618,6 +620,7 @@ async def run_agent_loop(
     # to tool_calls on the raw response object. call_llm is a text-only convenience
     # wrapper around _call_llm_raw. Both paths share the same Langfuse tracing and
     # DB usage logging — observability is identical.
+    from investorai_mcp.llm.context_budget import prune_messages, trim_tool_result
     from investorai_mcp.llm.history import compress_history, count_tokens_approx
     from investorai_mcp.llm.litellm_client import _call_llm_raw
 
@@ -634,15 +637,27 @@ async def run_agent_loop(
     for iteration in range(max_iterations):
         token_estimate = count_tokens_approx(messages)
         if token_estimate > _TOKEN_HARD_LIMIT:
-            logger.error("Agent context too large (~%d tokens), aborting loop", token_estimate)
-            yield {
-                "type": "token",
-                "content": "The query requires too much data to process. Please ask about fewer stocks or a shorter time range.",
-            }
-            async for event in _emit_side_events(collected_tool_results):
-                yield event
-            yield {"type": "done"}
-            return
+            messages, dropped = prune_messages(messages, target_tokens=90_000)
+            token_estimate = count_tokens_approx(messages)
+            if dropped:
+                logger.warning(
+                    "Hard limit hit — pruned %d tool messages, now ~%d tokens",
+                    dropped,
+                    token_estimate,
+                )
+            if token_estimate > _TOKEN_HARD_LIMIT:
+                logger.error(
+                    "Agent context too large (~%d tokens) even after pruning, aborting",
+                    token_estimate,
+                )
+                yield {
+                    "type": "token",
+                    "content": "The query requires too much data to process. Please ask about fewer stocks or a shorter time range.",
+                }
+                async for event in _emit_side_events(collected_tool_results):
+                    yield event
+                yield {"type": "done"}
+                return
         if token_estimate > _TOKEN_WARN_LIMIT:
             logger.warning(
                 "Agent context large: ~%d tokens at iteration %d", token_estimate, iteration + 1
@@ -690,13 +705,25 @@ async def run_agent_loop(
 
         for tool_call_id, tool_name, result_str in results:
             collected_tool_results.append((tool_name, result_str))
+            trimmed = trim_tool_result(tool_name, result_str)
             messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": tool_call_id,
-                    "content": result_str,
+                    "content": trimmed,
                 }
             )
+
+        token_after = count_tokens_approx(messages)
+        if token_after > _TOKEN_PRUNE_LIMIT:
+            messages, dropped = prune_messages(messages, target_tokens=90_000)
+            if dropped:
+                logger.warning(
+                    "Pruned %d old tool messages after iteration %d (was ~%d tokens)",
+                    dropped,
+                    iteration + 1,
+                    token_after,
+                )
 
     logger.warning("Agent loop hit max_iterations (%d)", max_iterations)
     yield {
