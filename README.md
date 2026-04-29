@@ -4,7 +4,7 @@ AI-native stock research MCP server for retail investors — 11 tools, BYOK AI c
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue)
 ![FastMCP](https://img.shields.io/badge/FastMCP-2.0+-green)
-![Tests](https://img.shields.io/badge/tests-452%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-468%20passing-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-85%25-green)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
@@ -402,7 +402,7 @@ cp .env.example .env    # add your API keys
 ### Run tests
 
 ```bash
-uv run pytest tests/unit/                          # unit tests only (452 tests)
+uv run pytest tests/unit/                          # unit tests only (468 tests)
 uv run pytest tests/unit/ --cov=investorai_mcp     # with coverage report
 uv run pytest                                       # full suite
 ```
@@ -446,7 +446,7 @@ frontend/
     ├── components/     # React UI — ChatPanel, PriceChart, MonitoringDashboard…
     └── hooks/          # useChat (SSE), useBYOK
 tests/
-├── unit/               # 452 tests, 85% coverage — tools, agent loop, router, models
+├── unit/               # 468 tests, 85% coverage — tools, agent loop, router, models
 └── evals/              # Eval pairs for offline LLM quality benchmarking
 .github/
 └── workflows/
@@ -475,6 +475,7 @@ tests/
 | Standalone refresh classmethod | Own session per symbol, per-symbol lock + global write lock | Safe for `asyncio.gather` parallel refresh calls. Reusing a shared session across concurrent coroutines causes conflicts |
 | Lightweight query router | Regex + symbol detection before agent loop, injects hint into system prompt | Zero LLM cost, zero latency — nudges the agent to pick the right tool strategy upfront (batch vs. targeted, meta vs. data query) without hard-constraining it |
 | Real streaming TTFT | `acompletion(stream=True)` in final answer turn, text suppressed on tool-call turns | First token reaches the browser in ~200–400ms instead of after a full round-trip (~2–4s). Tool-use logic unchanged — `stream_chunk_builder` reconstructs the full response for tool_calls and usage stats |
+| Input sanitization (`api/sanitize.py`) | Regex format check on symbols, length cap on questions, model allowlist | Defense-in-depth before the ORM layer. Rejects malformed input at the boundary — SQL-like strings, oversized payloads, and unknown model IDs never reach the DB or LLM |
 
 ## Data Sources
 
@@ -520,6 +521,8 @@ tests/
 | Pre-commit hooks (ruff, ruff-format, gitleaks, whitespace, yaml/toml) | ✅ Done |
 | Lightweight query router (regex + symbol detection, no LLM call) | ✅ Done |
 | Real streaming TTFT (~200–400ms, `acompletion(stream=True)`) | ✅ Done |
+| Doom loop detection (fingerprint repeated tool calls, abort early) | ✅ Done |
+| Input sanitization (symbol format, question length cap, model allowlist) | ✅ Done |
 | Structured JSON logging | 🔜 Planned |
 | Integration tests | 🔜 Planned |
 | VS Code + GitHub Copilot MCP integration | 🔜 Planned |

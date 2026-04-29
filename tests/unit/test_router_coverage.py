@@ -337,7 +337,7 @@ async def test_chat_stream_missing_api_key_returns_400(client):
 async def test_chat_stream_unsupported_ticker_returns_404(client):
     response = await client.post(
         "/api/chat/stream",
-        json={"symbol": "FAKECORP", "question": "How is it?"},
+        json={"symbol": "FAKE", "question": "How is it?"},
         headers={"X-LLM-API-Key": "sk-test"},
     )
     assert response.status_code == 404

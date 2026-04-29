@@ -82,17 +82,17 @@ async def test_summary_unsupported_ticker(client):
 
 
 async def test_news_unsupported_ticker(client):
-    response = await client.get("/api/stocks/FAKECORP/news")
+    response = await client.get("/api/stocks/FAKE/news")
     assert response.status_code == 404
 
 
 async def test_cache_unsupported_ticker(client):
-    response = await client.get("/api/stocks/FAKECORP/cache")
+    response = await client.get("/api/stocks/FAKE/cache")
     assert response.status_code == 404
 
 
 async def test_sentiment_unsupported_ticker(client):
-    response = await client.get("/api/stocks/FAKECORP/sentiment")
+    response = await client.get("/api/stocks/FAKE/sentiment")
     assert response.status_code == 404
 
 
@@ -106,12 +106,12 @@ async def test_llm_validate_missing_key(client):
 
 
 async def test_refresh_unsupported_ticker(client):
-    response = await client.post("/api/stocks/FAKECROP/refresh")
+    response = await client.post("/api/stocks/FAKE/refresh")
     assert response.status_code == 404
 
 
 ### ----- Symbol Normalization ---------------------------------------
 async def test_lowercase_symbol_normalised(client):
-    response = await client.get("/api/stocks/fakecrop/prices")
+    response = await client.get("/api/stocks/fake/prices")
     assert response.status_code == 404
-    assert "FAKECROP" in response.json()["error"]["message"]
+    assert "FAKE" in response.json()["error"]["message"]

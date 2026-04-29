@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from investorai_mcp.api.error_handler import make_error
 from investorai_mcp.api.rate_limit import limiter
+from investorai_mcp.api.sanitize import ALLOWED_MODELS, validate_model, validate_question, validate_symbol
 from investorai_mcp.stocks import SUPPORTED_TICKERS, is_supported
 
 router = APIRouter()
@@ -154,7 +155,10 @@ async def get_prices(
     range: Literal["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"] = "1Y",
     price_type: Literal["adj_close", "avg_price", "close"] = "adj_close",
 ):
-    symbol = symbol.upper()
+    try:
+        symbol = validate_symbol(symbol)
+    except ValueError:
+        return JSONResponse(status_code=400, content=make_error("INVALID_SYMBOL", "Invalid ticker symbol format."))
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,
@@ -179,7 +183,10 @@ async def get_summary(
     symbol: str,
     range: Literal["1W", "1M", "3M", "6M", "1Y", "3Y", "5Y"] = "1Y",
 ):
-    symbol = symbol.upper()
+    try:
+        symbol = validate_symbol(symbol)
+    except ValueError:
+        return JSONResponse(status_code=400, content=make_error("INVALID_SYMBOL", "Invalid ticker symbol format."))
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,
@@ -204,7 +211,10 @@ async def get_news_endpoint(
     symbol: str,
     limit: int = Query(10, ge=1, le=50),
 ):
-    symbol = symbol.upper()
+    try:
+        symbol = validate_symbol(symbol)
+    except ValueError:
+        return JSONResponse(status_code=400, content=make_error("INVALID_SYMBOL", "Invalid ticker symbol format."))
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,
@@ -228,7 +238,10 @@ async def get_sentiment_endpoint(
     request: Request,
     symbol: str,
 ):
-    symbol = symbol.upper()
+    try:
+        symbol = validate_symbol(symbol)
+    except ValueError:
+        return JSONResponse(status_code=400, content=make_error("INVALID_SYMBOL", "Invalid ticker symbol format."))
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,
@@ -249,7 +262,10 @@ async def get_cache_endpoint(
     request: Request,
     symbol: str,
 ):
-    symbol = symbol.upper()
+    try:
+        symbol = validate_symbol(symbol)
+    except ValueError:
+        return JSONResponse(status_code=400, content=make_error("INVALID_SYMBOL", "Invalid ticker symbol format."))
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,
@@ -271,7 +287,10 @@ async def refresh_cache_endpoint(
     request: Request,
     symbol: str,
 ):
-    symbol = symbol.upper()
+    try:
+        symbol = validate_symbol(symbol)
+    except ValueError:
+        return JSONResponse(status_code=400, content=make_error("INVALID_SYMBOL", "Invalid ticker symbol format."))
     if not is_supported(symbol):
         return JSONResponse(
             status_code=404,
@@ -304,6 +323,13 @@ async def validate_llm_key(request: Request):
             status_code=400,
             content=make_error("MISSING_KEY", "api_key is required."),
         )
+    try:
+        model = validate_model(model)
+    except ValueError:
+        return JSONResponse(
+            status_code=400,
+            content=make_error("UNSUPPORTED_MODEL", f"Model not supported. Allowed: {', '.join(sorted(ALLOWED_MODELS))}"),
+        )
 
     try:
         import litellm
@@ -335,7 +361,7 @@ async def chat_stream(request: Request):
     api_key = request.headers.get("X-LLM-API-Key")
 
     body = await request.json()
-    symbol = body.get("symbol", "AAPL").upper()
+    raw_symbol = body.get("symbol", "AAPL")
     question = body.get("question", "")
     history = body.get("history", [])
     range_ = body.get("range", "1Y")
@@ -345,6 +371,12 @@ async def chat_stream(request: Request):
             status_code=400,
             content=make_error("MISSING_QUESTION", "question field is required."),
         )
+
+    try:
+        question = validate_question(question)
+        symbol = validate_symbol(raw_symbol)
+    except ValueError as e:
+        return JSONResponse(status_code=400, content=make_error("INVALID_INPUT", str(e)))
 
     from investorai_mcp.config import settings
 
