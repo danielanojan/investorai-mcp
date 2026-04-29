@@ -206,6 +206,116 @@ async def _call_llm_raw(
             logger.warning("Failed to log LLM usage: %s", log_err)
 
 
+#### Streaming call — used by the agent loop --------------------------------
+
+
+async def _call_llm_streaming(
+    messages: list[dict],
+    session_hash: str = "anonymous",
+    tool_name: str | None = None,
+    max_tokens: int = 2000,
+    api_key: str | None = None,
+    tools: list | None = None,
+    tool_choice: str = "auto",
+):
+    """
+    Streaming LLM call. Async generator:
+      yields ("text", str)       — text delta as it arrives from the API
+      yields ("done", response)  — once, the full reconstructed LiteLLM response
+
+    Text deltas are suppressed once a tool_call delta is detected, so the caller
+    never receives partial text for a turn that ends in tool use.
+    """
+    resolved_key = api_key or settings.llm_api_key
+    if not resolved_key:
+        raise RuntimeError("No LLM API key configured. Please set llm_api_key in .env file.")
+
+    call_kwargs: dict = {
+        "model": settings.llm_model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "api_key": resolved_key,
+        "stream": True,
+    }
+    if tools:
+        call_kwargs["tools"] = tools
+        call_kwargs["tool_choice"] = tool_choice
+
+    _obs = None
+    _start_ns: int = time.time_ns()
+    if _langfuse:
+        with contextlib.suppress(Exception):
+            _obs = _langfuse.start_observation(
+                as_type="generation",
+                name=tool_name or "llm-call",
+                model=settings.llm_model,
+                input=messages,
+                metadata={"session_hash": session_hash},
+            )
+
+    start = time.monotonic()
+    status = "success"
+    tokens_in = 0
+    tokens_out = 0
+    chunks: list = []
+    tool_calls_started = False
+
+    try:
+        response = await acompletion(**call_kwargs)
+        async for chunk in response:
+            chunks.append(chunk)
+            delta = chunk.choices[0].delta
+            if delta.tool_calls:
+                tool_calls_started = True
+            if delta.content and not tool_calls_started:
+                yield ("text", delta.content)
+
+        full_response = litellm.stream_chunk_builder(chunks, messages=messages)
+        if hasattr(full_response, "usage") and full_response.usage:
+            tokens_in = full_response.usage.prompt_tokens or 0
+            tokens_out = full_response.usage.completion_tokens or 0
+
+        yield ("done", full_response)
+
+    except litellm.RateLimitError as e:
+        status = "rate_limited"
+        logger.warning("LLM streaming call rate limited: %s", str(e))
+        raise RuntimeError(f"LLM rate limited: {e}") from e
+
+    except litellm.Timeout as e:
+        status = "timeout"
+        logger.error("LLM streaming call timed out: %s", str(e))
+        raise RuntimeError(f"LLM call timed out: {e}") from e
+
+    except Exception as e:
+        status = "error"
+        logger.error("LLM streaming call failed: %s", str(e))
+        raise RuntimeError(f"LLM call failed: {e}") from e
+
+    finally:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        _end_ns: int = _start_ns + latency_ms * 1_000_000
+
+        if _obs:
+            with contextlib.suppress(Exception):
+                _obs.update(
+                    usage_details={"input": tokens_in, "output": tokens_out},
+                    status_message=None if status == "success" else status,
+                )
+                _obs.end(end_time=_end_ns)
+                _langfuse.flush()
+
+        with contextlib.suppress(Exception):
+            await _log_usage(
+                session_hash=session_hash,
+                tool_name=tool_name,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+                status=status,
+            )
+
+
 #### Public text-only wrapper --------------------------------
 
 

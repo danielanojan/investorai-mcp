@@ -1,8 +1,8 @@
 """Unit tests for the ReAct agent loop (llm/agent.py).
 
 Patch targets — imports inside run_agent_loop are local, so patch the source:
-  _call_llm_raw    → investorai_mcp.llm.litellm_client._call_llm_raw
-  compress_history → investorai_mcp.llm.history.compress_history
+  _call_llm_streaming → investorai_mcp.llm.litellm_client._call_llm_streaming
+  compress_history    → investorai_mcp.llm.history.compress_history
   count_tokens_approx → investorai_mcp.llm.history.count_tokens_approx
 
 Module-level names in agent.py patch at:
@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # ---------------------------------------------------------------------------
 # Patch paths
 # ---------------------------------------------------------------------------
-_LLM_RAW = "investorai_mcp.llm.litellm_client._call_llm_raw"
+_LLM_STREAMING = "investorai_mcp.llm.litellm_client._call_llm_streaming"
 _COMPRESS = "investorai_mcp.llm.history.compress_history"
 _COUNT_TOK = "investorai_mcp.llm.history.count_tokens_approx"
 _DISPATCH = "investorai_mcp.llm.agent._dispatch"
@@ -55,6 +55,16 @@ def _make_tool_call(name: str, args: dict, call_id: str = "tc_1"):
     return tc
 
 
+def _make_streaming_mock(response):
+    """Return an async generator function simulating _call_llm_streaming for a single response."""
+    async def _gen(*args, **kwargs):
+        content = response.choices[0].message.content or ""
+        if content:
+            yield ("text", content)
+        yield ("done", response)
+    return _gen
+
+
 async def _collect(gen):
     """Drain an async generator into a list."""
     return [event async for event in gen]
@@ -70,7 +80,7 @@ async def test_final_answer_yields_tokens_and_done():
 
     response = _make_response("Hello world")
     with (
-        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_LLM_STREAMING, new=_make_streaming_mock(response)),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
     ):
@@ -89,7 +99,7 @@ async def test_empty_content_yields_done():
 
     response = _make_response("")
     with (
-        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_LLM_STREAMING, new=_make_streaming_mock(response)),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
     ):
@@ -112,15 +122,19 @@ async def test_tool_call_yields_thinking_then_done():
 
     call_count = 0
 
-    async def fake_llm(**kwargs):
+    async def fake_llm(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        return first_response if call_count == 1 else final_response
+        resp = first_response if call_count == 1 else final_response
+        content = resp.choices[0].message.content or ""
+        if content:
+            yield ("text", content)
+        yield ("done", resp)
 
     tool_result = {"symbol": "AAPL", "prices": [], "is_stale": False}
 
     with (
-        patch(_LLM_RAW, new=fake_llm),
+        patch(_LLM_STREAMING, new=fake_llm),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
         patch(_DISPATCH, new=AsyncMock(return_value=tool_result)),
@@ -142,13 +156,17 @@ async def test_thinking_event_contains_iteration_number():
 
     call_count = 0
 
-    async def fake_llm(**kwargs):
+    async def fake_llm(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        return first_response if call_count == 1 else final_response
+        resp = first_response if call_count == 1 else final_response
+        content = resp.choices[0].message.content or ""
+        if content:
+            yield ("text", content)
+        yield ("done", resp)
 
     with (
-        patch(_LLM_RAW, new=fake_llm),
+        patch(_LLM_STREAMING, new=fake_llm),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
         patch(_DISPATCH, new=AsyncMock(return_value={"symbol": "AAPL"})),
@@ -171,7 +189,7 @@ async def test_max_iterations_yields_error_token():
     always_tool_response = _make_response(tool_calls=[tc])
 
     with (
-        patch(_LLM_RAW, new=AsyncMock(return_value=always_tool_response)),
+        patch(_LLM_STREAMING, new=_make_streaming_mock(always_tool_response)),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
         patch(_DISPATCH, new=AsyncMock(return_value={})),
@@ -191,15 +209,20 @@ async def test_max_iterations_yields_error_token():
 async def test_token_hard_limit_aborts_loop():
     from investorai_mcp.llm.agent import _TOKEN_HARD_LIMIT, run_agent_loop
 
-    mock_llm = AsyncMock()
+    llm_calls = []
+
+    async def mock_streaming(*args, **kwargs):
+        llm_calls.append(1)
+        yield ("done", _make_response(""))
+
     with (
-        patch(_LLM_RAW, new=mock_llm),
+        patch(_LLM_STREAMING, new=mock_streaming),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=_TOKEN_HARD_LIMIT + 1),
     ):
         events = await _collect(run_agent_loop("big query"))
 
-    mock_llm.assert_not_called()
+    assert len(llm_calls) == 0
     assert events[-1]["type"] == "done"
     token_text = "".join(e["content"] for e in events if e["type"] == "token")
     assert len(token_text) > 0
@@ -210,7 +233,7 @@ async def test_token_warn_limit_continues():
 
     response = _make_response("Answer.")
     with (
-        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_LLM_STREAMING, new=_make_streaming_mock(response)),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=_TOKEN_WARN_LIMIT + 1),
     ):
@@ -310,7 +333,7 @@ async def test_history_is_compressed_before_loop():
     mock_compress = AsyncMock(return_value=compressed)
 
     with (
-        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_LLM_STREAMING, new=_make_streaming_mock(response)),
         patch(_COMPRESS, new=mock_compress),
         patch(_COUNT_TOK, return_value=1000),
     ):
@@ -326,7 +349,7 @@ async def test_no_history_skips_compression():
     mock_compress = AsyncMock(return_value=[])
 
     with (
-        patch(_LLM_RAW, new=AsyncMock(return_value=response)),
+        patch(_LLM_STREAMING, new=_make_streaming_mock(response)),
         patch(_COMPRESS, new=mock_compress),
         patch(_COUNT_TOK, return_value=1000),
     ):
@@ -350,10 +373,14 @@ async def test_multiple_tool_calls_dispatched_concurrently():
 
     call_count = 0
 
-    async def fake_llm(**kwargs):
+    async def fake_llm(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        return first_response if call_count == 1 else final_response
+        resp = first_response if call_count == 1 else final_response
+        content = resp.choices[0].message.content or ""
+        if content:
+            yield ("text", content)
+        yield ("done", resp)
 
     dispatch_calls = []
 
@@ -362,7 +389,7 @@ async def test_multiple_tool_calls_dispatched_concurrently():
         return {"prices": []}
 
     with (
-        patch(_LLM_RAW, new=fake_llm),
+        patch(_LLM_STREAMING, new=fake_llm),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
         patch(_DISPATCH, new=fake_dispatch),
@@ -524,10 +551,14 @@ async def test_loop_emits_sentiment_event_after_get_sentiment():
 
     call_count = 0
 
-    async def fake_llm(**kwargs):
+    async def fake_llm(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        return first_response if call_count == 1 else final_response
+        resp = first_response if call_count == 1 else final_response
+        content = resp.choices[0].message.content or ""
+        if content:
+            yield ("text", content)
+        yield ("done", resp)
 
     sentiment_result = {
         "symbol": "AAPL",
@@ -540,7 +571,7 @@ async def test_loop_emits_sentiment_event_after_get_sentiment():
     }
 
     with (
-        patch(_LLM_RAW, new=fake_llm),
+        patch(_LLM_STREAMING, new=fake_llm),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
         patch(_DISPATCH, new=AsyncMock(return_value=sentiment_result)),

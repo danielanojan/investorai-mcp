@@ -1,11 +1,14 @@
 """Tests for investorai_mcp/tools/utils.py"""
+
 from datetime import date, datetime
 
 
 def test_price_row_fields():
     from investorai_mcp.tools.utils import PriceRow
 
-    row = PriceRow(date=date(2024, 1, 15), adj_close=150.0, close=151.0, avg_price=150.5, volume=1000000)
+    row = PriceRow(
+        date=date(2024, 1, 15), adj_close=150.0, close=151.0, avg_price=150.5, volume=1000000
+    )
     assert row.date == date(2024, 1, 15)
     assert row.adj_close == 150.0
     assert row.close == 151.0
@@ -56,8 +59,20 @@ def test_price_rows_from_result_basic():
 
     result = {
         "prices": [
-            {"date": "2024-01-15", "adj_close": 150.0, "close": 151.0, "avg_price": 150.5, "volume": 500000},
-            {"date": "2024-01-16", "adj_close": 152.0, "close": 153.0, "avg_price": 152.5, "volume": 600000},
+            {
+                "date": "2024-01-15",
+                "adj_close": 150.0,
+                "close": 151.0,
+                "avg_price": 150.5,
+                "volume": 500000,
+            },
+            {
+                "date": "2024-01-16",
+                "adj_close": 152.0,
+                "close": 153.0,
+                "avg_price": 152.5,
+                "volume": 600000,
+            },
         ]
     }
     rows = price_rows_from_result(result)
@@ -79,7 +94,13 @@ def test_cache_result_from_price_success():
 
     result = {
         "prices": [
-            {"date": "2024-01-15", "adj_close": 150.0, "close": 151.0, "avg_price": 150.5, "volume": 100},
+            {
+                "date": "2024-01-15",
+                "adj_close": 150.0,
+                "close": 151.0,
+                "avg_price": 150.5,
+                "volume": 100,
+            },
         ],
         "is_stale": False,
         "data_age_hours": 3.0,

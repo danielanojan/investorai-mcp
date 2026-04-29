@@ -622,7 +622,7 @@ async def run_agent_loop(
     # DB usage logging — observability is identical.
     from investorai_mcp.llm.context_budget import prune_messages, trim_tool_result
     from investorai_mcp.llm.history import compress_history, count_tokens_approx
-    from investorai_mcp.llm.litellm_client import _call_llm_raw
+    from investorai_mcp.llm.litellm_client import _call_llm_streaming
     from investorai_mcp.llm.query_router import classify
 
     qc = classify(question)
@@ -667,7 +667,8 @@ async def run_agent_loop(
                 "Agent context large: ~%d tokens at iteration %d", token_estimate, iteration + 1
             )
 
-        response = await _call_llm_raw(
+        full_response = None
+        async for kind, payload in _call_llm_streaming(
             messages=messages,
             session_hash=session_hash,
             tool_name="agent_loop",
@@ -675,16 +676,16 @@ async def run_agent_loop(
             api_key=api_key,
             tools=TOOL_SCHEMAS,
             tool_choice="auto",
-        )
+        ):
+            if kind == "text":
+                yield {"type": "token", "content": payload}
+            elif kind == "done":
+                full_response = payload
 
-        msg = response.choices[0].message
+        msg = full_response.choices[0].message
 
-        # No tool calls — LLM has final answer, stream it word by word
+        # No tool calls — text was already streamed token by token
         if not msg.tool_calls:
-            final_text = msg.content or ""
-            words = [w for w in final_text.split(" ") if w]
-            for i, word in enumerate(words):
-                yield {"type": "token", "content": word + (" " if i < len(words) - 1 else "")}
             async for event in _emit_side_events(collected_tool_results):
                 yield event
             yield {"type": "done"}

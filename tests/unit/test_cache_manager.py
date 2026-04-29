@@ -249,8 +249,11 @@ async def test_update_meta_error_increments_error_count(cache_manager, seeded_ti
 
 # CacheResult.with_staleness_warning ──────────────────────────────────────────
 
+
 def test_cache_result_with_staleness_warning():
-    result = CacheResult(data=[1, 2, 3], is_stale=False, data_age_hours=1.0, provider_used="yfinance")
+    result = CacheResult(
+        data=[1, 2, 3], is_stale=False, data_age_hours=1.0, provider_used="yfinance"
+    )
     stale = result.with_staleness_warning(5.0)
     assert stale.is_stale is True
     assert stale.data_age_hours == 5.0
@@ -259,6 +262,7 @@ def test_cache_result_with_staleness_warning():
 
 
 # get_prices_multi ─────────────────────────────────────────────────────────────
+
 
 async def test_get_prices_multi_empty_returns_empty(cache_manager):
     result = await cache_manager.get_prices_multi([])
@@ -279,6 +283,7 @@ async def test_get_prices_multi_returns_grouped(cache_manager, seeded_ticker, se
 
 # get_stale_or_missing ────────────────────────────────────────────────────────
 
+
 async def test_get_stale_or_missing_empty_returns_empty(cache_manager):
     result = await cache_manager.get_stale_or_missing([], "price_history")
     assert result == []
@@ -298,6 +303,7 @@ async def test_get_stale_or_missing_fresh_not_returned(cache_manager, seeded_tic
 
 # get_news_multi ──────────────────────────────────────────────────────────────
 
+
 async def test_get_news_multi_empty_returns_empty(cache_manager):
     result = await cache_manager.get_news_multi([])
     assert result == {}
@@ -310,9 +316,15 @@ async def test_get_news_multi_no_news_returns_empty_groups(cache_manager, seeded
 
 # period_to_cutoff all branches ───────────────────────────────────────────────
 
+
 def test_period_to_cutoff_all_ranges():
     for period, expected_days in [
-        ("1W", 7), ("1M", 30), ("3M", 90), ("6M", 180), ("3Y", 365 * 3), ("5Y", 365 * 5),
+        ("1W", 7),
+        ("1M", 30),
+        ("3M", 90),
+        ("6M", 180),
+        ("3Y", 365 * 3),
+        ("5Y", 365 * 5),
     ]:
         cutoff = CacheManager._period_to_cutoff(period)
         assert abs((date.today() - cutoff).days - expected_days) <= 2
