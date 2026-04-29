@@ -15,6 +15,7 @@ The agent loop uses primitive tools so the LLM reasons about each step.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 from typing import Any
@@ -637,6 +638,7 @@ async def run_agent_loop(
     # Collect (tool_name, result_str) across all iterations so we can emit
     # citations/sentiment events after the final answer is streamed.
     collected_tool_results: list[tuple[str, str]] = []
+    seen_tool_fingerprints: set[str] = set()
 
     for iteration in range(max_iterations):
         token_estimate = count_tokens_approx(messages)
@@ -694,6 +696,22 @@ async def run_agent_loop(
         # Yield thinking event so client knows what tools are running
         tool_names = [tc.function.name for tc in msg.tool_calls]
         yield {"type": "thinking", "tools": tool_names, "iteration": iteration + 1}
+
+        # Doom loop detection — abort if this exact set of tool calls + args has been seen before
+        fingerprint = hashlib.md5(
+            str(sorted((tc.function.name, tc.function.arguments) for tc in msg.tool_calls)).encode()
+        ).hexdigest()
+        if fingerprint in seen_tool_fingerprints:
+            logger.warning("Doom loop detected at iteration %d: %s", iteration + 1, tool_names)
+            yield {
+                "type": "token",
+                "content": "I got stuck repeating the same steps. Please try rephrasing your question.",
+            }
+            async for event in _emit_side_events(collected_tool_results):
+                yield event
+            yield {"type": "done"}
+            return
+        seen_tool_fingerprints.add(fingerprint)
 
         # Append assistant turn with all tool_calls
         messages.append(msg.model_dump(exclude_unset=True))

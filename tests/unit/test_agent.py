@@ -178,6 +178,63 @@ async def test_thinking_event_contains_iteration_number():
 
 
 # ---------------------------------------------------------------------------
+# Doom loop detection
+# ---------------------------------------------------------------------------
+
+
+async def test_doom_loop_detected_on_repeated_tool_calls():
+    from investorai_mcp.llm.agent import run_agent_loop
+
+    tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL", "range": "1Y"})
+    always_tool_response = _make_response(tool_calls=[tc])
+
+    with (
+        patch(_LLM_STREAMING, new=_make_streaming_mock(always_tool_response)),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=AsyncMock(return_value={"prices": []})),
+    ):
+        events = await _collect(run_agent_loop("loop forever", max_iterations=8))
+
+    assert events[-1]["type"] == "done"
+    token_text = "".join(e["content"] for e in events if e["type"] == "token")
+    assert "stuck" in token_text.lower() or "repeating" in token_text.lower()
+
+
+async def test_doom_loop_not_triggered_for_different_args():
+    from investorai_mcp.llm.agent import run_agent_loop
+
+    tc1 = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL", "range": "1Y"}, call_id="tc_1")
+    tc2 = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL", "range": "3M"}, call_id="tc_2")
+    first_response = _make_response(tool_calls=[tc1])
+    second_response = _make_response(tool_calls=[tc2])
+    final_response = _make_response("Done.")
+
+    call_count = 0
+
+    async def fake_llm(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        resp = [first_response, second_response, final_response][min(call_count - 1, 2)]
+        content = resp.choices[0].message.content or ""
+        if content:
+            yield ("text", content)
+        yield ("done", resp)
+
+    with (
+        patch(_LLM_STREAMING, new=fake_llm),
+        patch(_COMPRESS, new=AsyncMock(return_value=[])),
+        patch(_COUNT_TOK, return_value=1000),
+        patch(_DISPATCH, new=AsyncMock(return_value={"prices": []})),
+    ):
+        events = await _collect(run_agent_loop("Compare AAPL ranges", max_iterations=8))
+
+    token_text = "".join(e["content"] for e in events if e["type"] == "token")
+    assert "stuck" not in token_text.lower()
+    assert events[-1]["type"] == "done"
+
+
+# ---------------------------------------------------------------------------
 # Max iterations
 # ---------------------------------------------------------------------------
 
@@ -185,11 +242,18 @@ async def test_thinking_event_contains_iteration_number():
 async def test_max_iterations_yields_error_token():
     from investorai_mcp.llm.agent import run_agent_loop
 
-    tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL"})
-    always_tool_response = _make_response(tool_calls=[tc])
+    # Use a unique range arg each call so doom loop doesn't fire before max_iterations
+    call_count = 0
+
+    async def fake_llm(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        tc = _make_tool_call("get_price_history", {"ticker_symbol": "AAPL", "range": str(call_count)})
+        resp = _make_response(tool_calls=[tc])
+        yield ("done", resp)
 
     with (
-        patch(_LLM_STREAMING, new=_make_streaming_mock(always_tool_response)),
+        patch(_LLM_STREAMING, new=fake_llm),
         patch(_COMPRESS, new=AsyncMock(return_value=[])),
         patch(_COUNT_TOK, return_value=1000),
         patch(_DISPATCH, new=AsyncMock(return_value={})),
